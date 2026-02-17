@@ -10,7 +10,7 @@
 - Pages are MDX files with YAML frontmatter
 - Configuration lives in `docs.json`
 - Run `mint dev` to preview locally
-- Run `mint broken-links` to check links
+- Run `mint broken-links` to check links.
 
 ## Terminology
 
