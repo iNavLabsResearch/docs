@@ -1,0 +1,86 @@
+---
+title: "WhatsApp Agents"
+description: "Build and deploy WhatsApp messaging agents for Kupe AI."
+---
+
+# WhatsApp Agents Quickstart
+
+Build your first WhatsApp agent and start messaging customers through WhatsApp.
+
+You will:
+
+* Set up your WhatsApp Business credentials
+* Connect your WhatsApp number to Kupe AI
+* Configure your webhook
+* Attach an agent to handle messages
+
+---
+
+## Prerequisites
+
+* A Meta developer account
+* Access to [Meta for Developers](https://developers.facebook.com/)
+* A WhatsApp Business number (test number is fine)
+
+> **Tip:** If you’re new to the WhatsApp Cloud API, keep the [Meta WhatsApp docs](https://developers.facebook.com/docs/whatsapp/cloud-api/get-started) open for reference.
+
+---
+
+## 1. Get your WhatsApp credentials
+
+From Meta you need:
+
+* **Phone Number ID**
+* **Access Token**
+* **WhatsApp Business Account ID**
+
+If you haven’t set up WhatsApp Business yet, follow Meta’s guide to create an app and get these values.
+
+---
+
+## 2. Connect your WhatsApp number to Kupe AI
+
+1. **Log in to Kupe AI**  
+   Go to [https://app.kupe.in](https://app.kupe.in) and sign in.
+
+2. **Open WhatsApp**  
+   Click **WhatsApp** in the sidebar.
+
+3. **Start the integration**  
+   Click **Integrate WhatsApp Number**.
+
+4. **Fill in the form**  
+   * **Phone Number** — Your WhatsApp Business number (with country code)  
+   * **Phone Number ID** — From Meta  
+   * **Business Account ID** — From Meta  
+   * **Auth Token** — Access token from [Meta Apps](https://developers.facebook.com/apps)  
+   * **Label** — Friendly name (e.g. "Customer Support Bot")  
+   * **Business Name** — Your business name  
+   * **Verify Token** — Any string you choose; you’ll use the same value in the webhook step  
+
+5. **Create**  
+   Click **Create** to save the integration.
+
+> **Security:** Store your access token securely, rotate it when needed, and avoid sharing it in screenshots.
+
+---
+
+## 3. Configure the WhatsApp webhook
+
+1. Go to [Meta for Developers](https://developers.facebook.com/apps) and select your app.
+2. Open **Use cases** → **Customize** for the WhatsApp use case.
+3. Under **Configuration**, open **Webhook Configuration**.
+4. Set:
+   * **Callback URL** — Use the webhook URL shown in the Kupe WhatsApp integration screen (e.g. `https://api.kupe.in/...` — check the dashboard for the exact URL).
+   * **Verify Token** — The same value you entered in Kupe.
+5. Click **Verify and Save**.
+6. Enable the **messages** webhook field so your agent receives incoming messages.
+7. Confirm in the [Kupe WhatsApp](https://app.kupe.in/whatsapp) page that the webhook status is active.
+
+---
+
+## You’re all set
+
+Your WhatsApp agent is connected. Send a message to your WhatsApp Business number to test end-to-end.
+
+> **Tip:** If messages don’t arrive, double-check the Verify Token, ensure the **messages** field is enabled in the webhook, and that your access token hasn’t expired.

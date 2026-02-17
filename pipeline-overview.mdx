@@ -1,0 +1,114 @@
+---
+title: "Pipelines Overview"
+description: "How voice and text interactions flow in Kupe AI."
+---
+
+## Overview
+
+In Kupe AI, each agent interaction runs through a **pipeline** that handles both **voice** and **text** with low latency and clear turn-taking.
+
+There are two main pipeline types:
+
+- **Speech pipeline** – For real-time voice conversations (phone or web).
+- **Text pipeline** – For chat or text-only interfaces.
+
+---
+
+## Speech pipeline
+
+The **speech pipeline** runs the full loop from user speech to agent speech.
+
+### 1. User audio input
+
+Audio can come from:
+
+- **Twilio** (phone calls)
+- **Web** (browser-based calls)
+
+Audio is **resampled** to a standard format and **noise reduction** is applied before processing.
+
+---
+
+### 2. Voice activity detection (VAD)
+
+**VAD** decides when the user is speaking and when they have finished. It uses:
+
+- **Acoustic cues** (energy, silence)
+- **Semantic cues** (end-of-utterance)
+
+So the system knows **when to respond** and **when to keep listening**.
+
+---
+
+### 3. Transcription
+
+Detected speech is sent to the **transcription model** in **streaming mode**:
+
+- **Partial transcripts** are produced in near real time.
+- Transcripts are updated as the user keeps talking.
+- The agent can start reasoning before the user fully stops.
+
+---
+
+### 4. Agent processing
+
+The transcript is sent to the **agent (LLM)**, which:
+
+- Interprets intent.
+- Produces a contextual reply.
+- Can call **tools or integrations** (e.g. MCP, HTTP).
+
+The system keeps listening for **interruptions**: if the user speaks again, the current response is **stopped and cleared**, and the new input is processed.
+
+---
+
+### 5. Text-to-speech (TTS)
+
+The agent’s text is sent to **TTS**, which:
+
+- Converts it to natural speech.
+- Supports **streaming**, so playback can start with minimal delay.
+
+---
+
+### 6. Audio output
+
+The generated speech is **streamed** back to the user via:
+
+- The browser, or
+- The Twilio call.
+
+That completes one **speech loop**: user voice → agent reasoning → agent voice.
+
+---
+
+## Text pipeline
+
+The **text pipeline** is a shorter path for chat or text-only use:
+
+1. **User text** – The user sends a message.
+2. **Agent processing** – The same LLM and tool logic as in the speech pipeline.
+3. **Integrations** – Tools and APIs run as needed.
+4. **Text output** – The reply is returned as text (no TTS).
+
+It reuses the same agent and integrations as the speech pipeline, without any voice stages (VAD, STT, TTS).
+
+---
+
+## Summary
+
+| Stage | Speech pipeline | Text pipeline |
+|--------|------------------|---------------|
+| Input | User voice (Twilio/Web) | Text message |
+| Processing | VAD + Transcription + Agent + TTS | Agent only |
+| Output | Agent voice (streamed) | Text reply |
+| Interruption | Handled in real time | Not applicable |
+
+---
+
+### Takeaways
+
+- Both pipelines share the **same agent and integration logic**.
+- The speech pipeline adds **streaming**, **turn detection**, and **TTS**.
+- Interruptions are handled so the conversation stays smooth.
+- Use the speech pipeline for **voice-first** and the text pipeline for **text-first** experiences.

@@ -1,0 +1,68 @@
+---
+title: "Batch Calling (Outbound)"
+description: "Run outbound call campaigns with agents or workflows."
+---
+
+## 1. Create a new batch
+
+1. **Log in to Kupe AI**  
+   Go to [https://app.kupe.in](https://app.kupe.in) and sign in.
+
+2. **Open Outbound**  
+   Click **Outbound** in the sidebar.
+
+3. **Create a batch**  
+   Click **Create Batch**.
+
+4. **Fill in the form**
+   * **Batch Name** — A clear name for the campaign (e.g. "Nov Support Followups")
+   * **Description** — Short summary (e.g. "Follow-up calls for November demo requests")
+   * **Phone Number** — The outbound number calls will use (must be connected to your account)
+   * **Agent / Workflow** — Choose the Agent or Workflow that will handle each call
+   * **Variable Names** — Comma-separated names for variables used in the agent prompt (e.g. `name`, `company_name`, `appointment_time`)
+   * **Batch Size** — Maximum number of contacts to run (can match your CSV size)
+
+---
+
+## 2. Prepare your CSV
+
+Your CSV must include:
+
+* A column for **to_phonenumber**
+* Optional columns for any **variables** you defined (names must match the variable names above)
+* **Phone numbers** in **E.164 format** (e.g. `+1234567890`)
+
+Tips:
+
+* Use a header row.
+* Remove extra spaces and hidden characters.
+* Validate phone numbers before upload to reduce errors.
+
+---
+
+## 3. Upload CSV to the batch
+
+1. From the Batch Calling list, open the batch you created to go to **Batch Details**.
+2. Click **Upload** and select your CSV.
+3. **(Optional)** Click **Template** to download a sample CSV for the correct format.
+4. Map CSV columns to the fields shown (e.g. `to_phonenumber` and variable columns).
+5. After selecting the file, review the preview; the UI may warn about invalid numbers.
+6. Uploaded contacts appear in the **Call Recipients** table with Phone Number, Status, and Variables.
+
+---
+
+## 4. Launch the campaign
+
+When the upload has been processed and the contact count looks correct:
+
+1. Click **Launch Campaign**.
+
+Kupe will schedule and place calls using the chosen Agent or Workflow. Each call uses the variables from the CSV for personalization.
+
+---
+
+## Tips and validations
+
+* Use **E.164** phone format (`+<countrycode><number>`).
+* If rows are rejected, download the error report or fix the CSV and re-upload only failed rows.
+* Test with a small **batch size** (e.g. 10) first to verify agent behavior.

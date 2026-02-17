@@ -1,0 +1,57 @@
+---
+title: "Post Analysis"
+description: "Analyze completed calls for summaries, structured data, or follow-up actions."
+---
+
+# Post Analysis
+
+After a call ends, you can run **post-analysis** on the transcript and metadata to get summaries, structured output, or to trigger integrations.
+
+---
+
+## Overview
+
+Post-analysis runs once a conversation is over. You can configure what kind of analysis or action you want.
+
+There are **three options**:
+
+---
+
+## 1. Call summary
+
+The **Call Summary** option produces a short summary of the conversation.
+
+* Set a **prompt** that tells the system what to emphasize (e.g. issues, resolutions, next steps).
+* The output is plain text you can use in notes, emails, or reports.
+
+> **Example prompt:** “Summarize the conversation focusing on customer issues, agent responses, and resolution steps.”
+
+---
+
+## 2. Structured output
+
+**Structured Output** uses a prompt to turn the conversation into **structured data** (e.g. JSON).
+
+* Useful for **reporting, analytics, or automation**.
+* The result can be parsed or sent to other APIs.
+
+> **Example:** Extract fields like `intent`, `sentiment`, and `next_action` in JSON.
+
+---
+
+## 3. Integration trigger
+
+This option **calls an integration** when the call ends.
+
+* Send post-analysis data to an external HTTP API.
+* Use it for CRM updates, follow-up messages, or logging summaries elsewhere.
+
+---
+
+## Summary
+
+| Option | Purpose | Example |
+|--------|---------|--------|
+| **Call summary** | Short text summary | Notes, email reports |
+| **Structured output** | Structured insights | Dashboards, APIs |
+| **Integration trigger** | Call external API | CRM, logging |

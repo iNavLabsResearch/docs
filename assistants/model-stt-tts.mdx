@@ -1,0 +1,42 @@
+---
+title: "Model, Transcriber & TTS"
+description: "Configure the model, transcriber, and text-to-speech for your assistant."
+---
+
+## Model
+
+In the **Model** section you configure how the assistant thinks and responds.
+
+* Choose a **model** from the dropdown.
+* Set **temperature** to control variability — lower values are more deterministic, higher values more creative.
+* Optionally set a **welcome message** for when a call starts.
+* Define a **greeting** that the agent speaks at the start of the call.
+
+> **Use case:** Use the model settings to tune tone, creativity, and how the conversation starts.
+
+---
+
+## Transcriber
+
+The **transcriber** turns the caller’s speech into text for the model.
+
+* Pick a **transcriber** provider from the list.
+* It converts speech to text in real time so the agent can respond quickly.
+
+### Streaming
+
+Some providers support a **Streaming** option. When enabled, transcription is **streaming**, which keeps conversations smooth and low-latency.
+
+> **Note:** Most providers support streaming. If you use a non-streaming provider, response timing may differ.
+
+---
+
+## Text to speech (TTS)
+
+**TTS** turns the assistant’s text into spoken audio.
+
+* Choose from available **voices** and providers.
+* Configure **style and accent** where the provider supports it.
+* **Streaming** mode can start playback as audio is generated for faster responses.
+
+> **Recommendation:** Use TTS streaming for more natural, responsive calls.

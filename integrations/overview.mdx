@@ -1,0 +1,48 @@
+---
+title: "Integrations Overview"
+description: "How integrations let agents perform complex tasks."
+---
+
+# Integrations Overview
+
+Integrations let your agents perform richer, more intelligent actions by talking to external systems.
+
+Kupe integrations are **quick to set up**: choose a type, connect, and your agents can use the new capabilities without extra code. That gives you a **single integration layer** for voice agents to read data and run actions in real time.
+
+---
+
+## Unified setup
+
+From the **Integrations** area in the dashboard:
+
+1. Choose the integration type (MCP or HTTP).
+2. Click **Connect** (or follow the provider’s sign-in flow).
+3. After authorization, the integration appears in your list.
+
+Once connected, the provider’s tools or endpoints are available to your agents — for example to fetch data, send updates, or call third-party APIs. This works for **pre-built integrations** (e.g. calendar, CRM) and **custom** setups you configure yourself.
+
+---
+
+## Custom integrations
+
+You can add **custom** integrations by defining:
+
+* **Authentication** (e.g. API keys, headers).
+* **Endpoints and parameters**.
+* **Input/output** (or schema) where relevant.
+
+That lets your agents work with almost any external system or API.
+
+---
+
+## Output schema control
+
+External APIs often return large payloads; not every field is useful for the agent.
+
+With **Output Schema Control** you can:
+
+* Define which **fields** you want in the response.
+* **Trim** unnecessary data before it reaches the model or tools.
+* Keep responses **focused** and efficient.
+
+Example: for a calendar API you might keep only `event_name` and `start_time` and drop the rest. That keeps responses clean and easier to use downstream.

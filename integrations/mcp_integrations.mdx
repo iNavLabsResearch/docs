@@ -1,0 +1,52 @@
+---
+title: "MCP Integrations"
+description: "Connect and use MCP integrations for agents and workflows."
+---
+
+MCP (Model Context Protocol) integrations let your agents and workflows use external tools and data in a standard, secure way.
+
+Learn more about the protocol: [Model Context Protocol](https://modelcontextprotocol.io/).
+
+---
+
+## Connecting MCP integrations
+
+1. Open the **Integrations** page in the dashboard.
+2. Select the **MCP** tab.
+3. In the integrations list, click **Connect** for the MCP provider you want (e.g. Gmail, Zendesk, Trello).
+4. Complete **sign-in** or authorization in the new tab.
+5. When done, the **MCP server** appears under **Active Integrations**.
+
+---
+
+## Using MCP integrations
+
+After connecting, you can attach MCP integrations to:
+
+* **Assistants** — for real-time actions (e.g. send email, fetch calendar, update CRM).
+* **Workflows** — for multi-step tasks that use tools.
+
+Expand an integration card to see the tools it provides. One MCP integration can expose **multiple tools**, so you can do several actions through the same provider.
+
+---
+
+## Custom MCP integration
+
+If your provider isn’t in the list, add a **Custom MCP Integration**:
+
+1. In the MCP tab, click **Add Custom MCP**.
+2. Enter:
+   * **MCP Server URL**
+   * **Headers** (optional) — e.g. for auth or custom metadata
+   * **Timeout (seconds)** — how long to wait for the server
+3. After saving, the system connects to the MCP server, **fetches the schema**, and adds it to **Active Integrations**.
+
+You can then attach this integration to assistants or workflows like any other.
+
+---
+
+## Authorization and security
+
+* MCP integrations use OAuth where the provider supports it.
+* Credentials are stored securely and are not shown in plain text.
+* You can **disconnect** or revoke access anytime from the integrations dashboard.

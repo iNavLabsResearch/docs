@@ -1,0 +1,37 @@
+---
+title: "HTTP Integrations"
+description: "Connect agents and workflows to external APIs via HTTP."
+---
+
+## Overview
+
+HTTP integrations let your agents and workflows call external APIs through a single configuration screen. Your voice agents can then fetch data, trigger automations, or talk to internal services without writing custom code.
+
+---
+
+## Connecting from the library
+
+In the **Integrations** dashboard, open the **HTTP** (or Integrations Library) section. Click **Connect** on the provider you want. Complete sign-in or authorization in the new tab.
+
+When connected, the integration appears under **Active Integrations** and can be used by **Agents** or **Workflows**.
+
+---
+
+## Custom HTTP integration
+
+If your API isn’t in the list, add a **Custom HTTP Integration**:
+
+* Click **Add Custom HTTP** and provide:
+  * **Base URL** of the API
+  * **Authentication headers**
+  * **Timeout** (if needed)
+
+After configuration, the platform can fetch endpoint or schema information so the integration is easy to use. Custom HTTP integrations work like built-in ones and can be attached to any agent or workflow.
+
+---
+
+## Output schema control
+
+Many APIs return large payloads with more fields than you need. You can define a custom **Output Schema** and keep only the fields you care about.
+
+Example: for a calendar API you might keep only `event_name` and `start_time` and drop the rest. That keeps responses clean and relevant for your use case.
