@@ -7,7 +7,7 @@
     "light": "#6366f1",
     "dark": "#4338ca"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/logo/logo.png",
   "navigation": {
     "tabs": [
       {
@@ -21,19 +21,12 @@
             "group": "Assistants",
             "pages": [
               "assistants/quickstart",
+              "assistants/model-providers",
               "assistants/model-stt-tts",
               "assistants/files",
               "assistants/integrations",
               "assistants/post-analysis",
               "assistants/testing"
-            ]
-          },
-          {
-            "group": "Voice Workflows",
-            "pages": [
-              "voice-workflows/quickstart",
-              "voice-workflows/voice_workflow_terminologies",
-              "voice-workflows/testing"
             ]
           },
           {
@@ -45,12 +38,26 @@
             ]
           },
           {
-            "group": "Text Agents",
-            "pages": ["text-agents/whatsapp-agents"]
-          },
-          {
             "group": "Outbound",
             "pages": ["outbound/outbound"]
+          }
+        ]
+      },
+      {
+        "tab": "API reference",
+        "pages": [
+          "api-reference/introduction",
+          "api-reference/platform-rest-apis",
+          "voice-agent-api",
+          "supported-models"
+        ],
+        "groups": [
+          {
+            "group": "Voice Agent API",
+            "openapi": {
+              "source": "api-reference/kupe-voice-agent.openapi.yaml",
+              "directory": "api-reference/voice-agent"
+            }
           }
         ]
       }
@@ -60,8 +67,8 @@
     }
   },
   "logo": {
-    "light": "/logo/logo.png",
-    "dark": "/logo/logo.png"
+    "light": "/logo/light.png",
+    "dark": "/logo/dark.png"
   },
   "navbar": {
     "links": [

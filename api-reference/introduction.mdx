@@ -1,33 +1,171 @@
 ---
-title: 'Introduction'
-description: 'Example section for showcasing API endpoints'
+title: "Introduction"
+description: "Kupe Voice Agent HTTP API — base URL, authentication, endpoint index, and how to use the interactive reference."
 ---
 
-<Note>
-  If you're not looking to build API reference documentation, you can delete
-  this section by removing the api-reference folder.
-</Note>
+# Voice Agent API
 
-## Welcome
+Use this **API reference** tab to explore every Voice Agent endpoint with Mintlify’s **Try it** panel (request builder, cURL, and response samples), similar to the standard Mintlify API layout.
 
-There are two ways to build API documentation: [OpenAPI](https://mintlify.com/docs/api-playground/openapi/setup) and [MDX components](https://mintlify.com/docs/api-playground/mdx/configuration). For the starter kit, we are using the following OpenAPI specification.
+The live API is served at **`https://api.kupe.in`**. The OpenAPI source for this tab is **`api-reference/kupe-voice-agent.openapi.yaml`** in the docs repo.
 
-<Card
-  title="Plant Store Endpoints"
-  icon="leaf"
-  href="https://github.com/mintlify/starter/blob/main/api-reference/openapi.json"
->
-  View the OpenAPI specification file
-</Card>
+Use the **left sidebar** (OpenAPI tag groups, including **Service**, **Current user**, **Incoming calls**, **Call logs**, **Billing and usage**, **Tools and MCP**, **Post-call analysis**, **API keys**, then **Agent Management**, **Providers**, **Outbound calls**, **Knowledge base**, **Webhooks**) to open each operation. Every page includes **Try it**, request parameters, and response **schemas**. Tag names avoid `&` so Mintlify can render every group reliably.
+
+For narrative tables (batches, post-analysis rules, etc.), see **[Platform REST APIs](./platform-rest-apis)**.
+
+When you open **Try it** and click **Send**, the playground shows the **real HTTP response** from the API. Static JSON for success bodies is documented **in the operation description** or via **Schemas** (not duplicated as a second “example response” in the playground, so the live result stays uncluttered).
+
+---
+
+## Endpoints (index)
+
+### Service
+
+- **GET** `/health` — Public health check (no API key).
+
+### Current user
+
+- **GET** `/api/v1/me` — Returns **`user_id`**, **email**, optional **phone**, **`profile_image_url`** (from Supabase Auth metadata / identities when present), and **`auth`** (`bearer` or `api_key`). Requires **`x-api-key`** or **`Authorization: Bearer`** (dashboard JWT).
+
+### Incoming calls (PSTN mapping)
+
+- **POST** `/api/v1/phone/mapping` — Attach an **agent** or **workflow** to a **phone_numbers** row so inbound dials hit the right assistant. Use **E.164** numbers (**+91**… India, **+1**… US/Canada, etc.). See the OpenAPI **Incoming calls** tag and [Voice Agent HTTP API](/voice-agent-api#incoming-calls-pstn--map-a-line-to-an-assistant).
+
+### Agent management
+
+- **GET** `/api/v1/agents` — List agents (array or paginated object).
+- **POST** `/api/v1/agents/simple` — Create agent with platform defaults.
+- **GET** `/api/v1/agents/{agent_id}` — Get one agent with configs.
+- **PUT** `/api/v1/agents/{agent_id}` — Update agent.
+- **DELETE** `/api/v1/agents/{agent_id}` — Delete agent.
+
+### Providers
+
+- **GET** `/api/v1/providers/model` — LLM catalog.
+- **GET** `/api/v1/providers/tts` — TTS catalog.
+- **GET** `/api/v1/providers/stt` — STT catalog.
+- **GET** `/api/v1/providers/vad` — VAD catalog.
+- **GET** `/api/v1/providers/all` — All provider tables.
+- **GET** `/api/v1/tts-voices` — TTS voice rows (`voice_name`).
+
+### Outbound calls
+
+- **POST** `/api/call/create_call` — Outbound PSTN (`phoneNumber`, `user_id`, optional `agent_id`, …). Response **`call_sid`** = your **`call_id`**.
+
+### Knowledge base
+
+- **POST** `/api/v1/files/upload` — Upload file (multipart).
+- **GET** `/api/v1/files/supported-formats` — Allowed MIME types.
+- **GET** `/api/v1/files/user/{user_id}` — List files for a user.
+- **GET** `/api/v1/files/{file_id}` — File metadata + signed URLs.
+- **DELETE** `/api/v1/files/{file_id}` — Delete file everywhere.
+- **POST** `/api/v1/agent-files-mappings/create` — Attach file to agent.
+- **GET** `/api/v1/agent-files-mappings/agent/{agent_id}` — List mappings for agent.
+- **DELETE** `/api/v1/agent-files-mappings/agent/{agent_id}/file/{upload_file_id}` — Detach file from agent.
+- **POST** `/api/v1/search/semantic` — Semantic RAG search.
+- **POST** `/api/v1/search/hybrid` — Hybrid RAG search.
+
+### Call logs
+
+- **GET** `/api/v1/call-analytics` — List sessions, paginate (`page`, `page_size`), or **`?request_id=`** for one session (includes post-call analysis when allowed).
+- **GET** `/api/v1/call-analytics/export` — Export ZIP (`request_id` or date range).
+
+### Billing and usage
+
+- **GET** `/api/v1/billing/usage-records` — Usage by call sessions.
+- **GET** `/api/v1/billing/usage/records` — Grouped usage rows (`time_filter`, `usage_type`, `search`, pagination).
+- **GET** `/api/v1/billing/usage/summary` — Aggregated chart data.
+- **GET** `/api/v1/billing/usage/export` — Email CSV export (`time_filter`, `from_date`/`to_date`, filters).
+- **GET** `/api/v1/billing/credit-balance` — Credit balance summary.
+- **GET** `/api/v1/billing/balance-history` — Balance history.
+- **GET** `/api/v1/billing/usage/sessions/{session_id}` — Cost/usage for one session.
+
+With **`x-api-key`**, only **GET** billing routes are allowed; writes need a **Bearer** session.
+
+### Tools and MCP
+
+- **GET/POST** `/api/v1/tool-endpoint-defs` — HTTP tool definitions.
+- **GET/PUT/DELETE** `/api/v1/tool-endpoint-defs/{tool_id}` — One definition.
+- **GET/POST** `/api/v1/tools-mcp-server-defs` — MCP server definitions.
+- **GET/PUT/DELETE** `/api/v1/tools-mcp-server-defs/{tool_id}` — One MCP def.
+- **GET/POST/PATCH** `/api/v1/agents/{agent_id}/tools` — Agent tool mappings.
+- **DELETE** `/api/v1/agents/{agent_id}/tools/{tool_id}` — Remove mapping.
+
+### Post-call analysis
+
+- **GET/POST** `/api/v1/post-analysis/rules` — List or create rules.
+- **GET/PUT/DELETE** `/api/v1/post-analysis/rules/{rule_id}` — One rule.
+- **POST** `/api/v1/post-analysis/rules/{rule_id}/duplicate` — Duplicate.
+- **GET/POST** `/api/v1/agents/{agent_id}/post-analysis` — Read or upsert agent post-analysis config.
+- **GET/PUT** `/api/v1/agents/{agent_id}/post-analysis/attached-rules` — List or set attached `rule_ids`.
+- **GET** `/api/v1/agents/{agent_id}/post-analysis/attached-rule-ids` — IDs only.
+
+### API keys
+
+- **POST** `/api/v1/api-keys` — Create (optional `name`).
+- **GET** `/api/v1/api-keys/fetch/{user_id}` — List active keys.
+- **PATCH** `/api/v1/api-keys/{key_id}` — Rename (`{ "name": "..." }`).
+- **DELETE** `/api/v1/api-keys/{key_id}` — Revoke.
+
+### Webhooks (your server)
+
+Documented callback shapes Kupe can POST when you configure **Post analysis** → HTTP tool / structured output:
+
+- **POST** webhook `voiceCallCompleted`
+- **POST** webhook `voiceCallError`
+
+---
 
 ## Authentication
 
-All API endpoints are authenticated using Bearer tokens and picked up from the specification file.
+### Kupe API key
 
-```json
-"security": [
-  {
-    "bearerAuth": []
-  }
-]
+Most routes require:
+
+```http
+x-api-key: <YOUR_KUPE_API_KEY>
 ```
+
+In the **Try it** panel, open **Authentication**, choose **KupeApiKey**, and paste your key. The OpenAPI spec sets a placeholder via `x-default` for convenience.
+
+Your key is bound to a **user** in Kupe. Some routes also need that user’s UUID (for example `user_id` on file upload or outbound `create_call`).
+
+### Public routes
+
+- **GET** `/health` — no API key.
+- **POST** `/api/call/create_call` — excluded from API-key middleware in the backend (still protect at the edge); optional `Origin` allow-list applies.
+- **POST** `/api/v1/search/semantic` and **POST** `/api/v1/search/hybrid` — also excluded from API-key middleware; scope results with `agent_id` and secure at the edge if the URL is public.
+
+---
+
+## Client field mapping
+
+| Your field | Kupe |
+|------------|------|
+| **name** | `agent.name` |
+| **prompt** | `agent_model_config.system_prompt` |
+| **call_type** | Inbound: phone → agent in [Dashboard](https://app.kupe.in). Outbound: `create_call` + `agent_id`. |
+| **transcriber / model / voice** | `transcriber_config`, `agent_model_config`, `tts_config` on create/update agent. |
+| **extracted_variables** | Post-analysis structured output / HTTP tool (see **Webhooks**). |
+| **context_params** | Not a single global JSON body on `create_call` yet; pass via telephony or extend backend if needed. |
+
+---
+
+## Website URL → knowledge
+
+There is **no** dedicated public REST endpoint that only accepts a website URL for voice-agent RAG. Use **file upload** or dashboard flows; see [Knowledge base](#knowledge-base) endpoints above.
+
+---
+
+## Troubleshooting
+
+- **`403` `Forbidden: API Key does not have required scopes`** — Deploy the latest **`rbac_paths.json`** and RBAC middleware from `milli_ai_backend`, and ensure `api_key_scopes` rows (if any) include the paths you need.
+- **`402`** on outbound — billing / credits.
+- **Provider IDs** — Use UUIDs from **Providers** `GET` responses, or pass **`model_name` / `name` strings**; the backend resolves by **id first**, then catalog fields.
+
+---
+
+## More reading
+
+- [Supported models & providers](/supported-models)
+- [Voice Agent HTTP guide](/voice-agent-api) — RBAC, billing, and longer examples

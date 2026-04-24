@@ -1,0 +1,164 @@
+---
+title: Platform REST APIs
+description: Tools, agents, outbound batches, call logs, billing, and API keys — paths and usage patterns for integrations.
+---
+
+All routes below are under your API host (for example `https://api.kupe.in`) unless noted. Authenticate with **`Authorization: Bearer <supabase_jwt>`** from the dashboard, or **`x-api-key: <kupe_api_key>`** for server integrations.
+
+## Tools — custom HTTP tools and MCP
+
+### HTTP tool definitions (CRUD)
+
+Base path: **`/api/v1/tool-endpoint-defs`**
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `""` | Create a tool definition (URL, schemas, method). |
+| `GET` | `""` | List your tool definitions. |
+| `GET` | `/{id}` | Get one definition. |
+| `PUT` | `/{id}` | Update. |
+| `DELETE` | `/{id}` | Delete. |
+
+### MCP server tool definitions (CRUD)
+
+Base path: **`/api/v1/tools-mcp-server-defs`**
+
+Same idea as HTTP tools: `POST` / `GET` / `GET /{id}` / `PUT` / `DELETE` for MCP-backed tools.
+
+### Attach tools to an agent
+
+Base path: **`/api/v1/agents`**
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/{agent_id}/tools` | List tools linked to the agent. |
+| `POST` | `/{agent_id}/tools` | Add tool mappings (body: list of tool config objects). |
+| `PATCH` | `/{agent_id}/tools` | Replace/update tool configuration. |
+| `DELETE` | `/{agent_id}/tools/{tool_id}` | Remove one tool mapping. |
+
+Create tools first (`tool-endpoint-defs` or `tools-mcp-server-defs`), then reference their IDs in the agent tools payload when calling `POST` / `PATCH` on `/{agent_id}/tools`.
+
+---
+
+## Post-call analysis — rules and agent mapping
+
+### User-scoped rules (CRUD)
+
+Base path: **`/api/v1/post-analysis`**
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/rules` | List rules. |
+| `POST` | `/rules` | Create rule (JSON body). |
+| `GET` | `/rules/{rule_id}` | Get one rule. |
+| `PUT` | `/rules/{rule_id}` | Update. |
+| `DELETE` | `/rules/{rule_id}` | Delete. |
+| `POST` | `/rules/{rule_id}/duplicate` | Duplicate. |
+
+### Map rules to an agent
+
+Base path: **`/api/v1/agents/{agent_id}`**
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/post-analysis` | Upsert post-call analysis config for the agent (body includes `agent_id` aligned with path). |
+| `GET` | `/post-analysis` | Get post-call analysis rows for the agent. |
+| `GET` | `/post-analysis/attached-rules` | Rules attached to the agent. |
+| `GET` | `/post-analysis/attached-rule-ids` | IDs only. |
+| `PUT` | `/post-analysis/attached-rules` | Set attached rules: body `{ "rule_ids": ["uuid", ...] }`. |
+
+---
+
+## Outbound — batches, numbers, campaign launch
+
+Base path: **`/api/v1/batch-call`**
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/create` | Create a batch (agent/workflow, variable names, batch name, etc.). |
+| `POST` | `/upload/{batch_id}` | Upload CSV with `to_phonenumber` and variable columns. |
+| `POST` | `/{batch_id}/data/upsert` | Add or update rows via JSON (numbers + variables). |
+| `GET` | `/{batch_id}/data` | List batch rows (optional `?status=` filter). |
+| `GET` | `/browse` | Browse batches (filters/query as implemented by the API). |
+| `GET` | `/user/{user_id}` | List batches for a user. |
+| `GET` | `/{batch_id}` | Get batch metadata. |
+| `POST` | `/start/{batch_id}` | **Launch campaign** — start dialing for queued numbers. |
+| `POST` | `/status-callback` | Provider status webhook (configured with your telephony provider). |
+
+---
+
+## Call logs — list, pagination, single session, post-call data
+
+Base path: **`/api/v1/call-analytics`**
+
+| Query / path | Behavior |
+|--------------|----------|
+| `GET /call-analytics?request_id=<id>` | **Single call** by `request_id`. Response includes session fields; when HIPAA-style, transcript/recording/post-call fields may be stripped. |
+| `GET /call-analytics?page=&page_size=` | **Paginated list** (server-side). Use `filter` (alias) for search on request id / call type. |
+| `GET /call-analytics` (no page) | Full list for dashboards (subject to feature flags and scope). |
+| Super-admin scoping | Optional query params: `scope`, `organization_ids`, `owner_user_ids`, `platform_roles`, etc., as supported by your deployment. |
+
+Post-call analysis fields (when not redacted) appear on the session object, e.g. `post_call_analysis_results` and related keys returned by the service layer.
+
+### Export (ZIP, optional date range)
+
+`GET /call-analytics/export` — supports `request_id` for a single downloadable export, or bulk export with `start_date` / `end_date` (`YYYY-MM-DD`) and email delivery for large ranges.
+
+---
+
+## Billing and usage (credits, cost, duration)
+
+Base path: **`/api/v1/billing`**
+
+Typical **read** endpoints (also available under `/billing/...` where the router is mounted without the `/api/v1` prefix):
+
+| GET path | Purpose |
+|----------|---------|
+| `/usage-records` | Usage organized by call sessions. |
+| `/usage/records` | Service usage records with filters (`time_filter`, `usage_type`, search, `limit`/`offset`). |
+| `/usage/summary` | Aggregated summary for charts. |
+| `/usage/sessions/{session_id}` | Usage and cost for one session. |
+| `/credit-balance` | Current credit balance summary. |
+| `/balance-history` | Balance history. |
+| `/plans`, `/pricing-plans`, … | Catalog / pricing reads as exposed by your build. |
+
+### API key vs session (important)
+
+When you authenticate with **`x-api-key`**, **only `GET` (and `HEAD`/`OPTIONS`)** are allowed on billing paths. Checkout, grant-credits, payment intents, and other **writes** require a **Bearer (session) token** from the dashboard.
+
+Webhooks (`/api/v1/billing/webhook`, Razorpay routes, etc.) stay on the server allow-list and are not blocked by this rule.
+
+---
+
+## API keys — multiple keys, names, revoke
+
+Base path: **`/api/v1/api-keys`**
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `""` | Create key. Body: `{ "api_key": "<secret>", "user_id": "<uuid>", "provider_name": "milli_chat_ai", "name": "optional label" }`. Response: `{ "message", "api_key": { ... } }`. |
+| `GET` | `/fetch/{user_id}` | List **active** keys for a user (same user or org-admin scope). |
+| `POST` | `/exists` | Body `{ user_id, provider_name }` → `true` if any active key exists for that provider. |
+| `PATCH` | `/{key_id}` | Body `{ "name": "new label" }` (empty string clears the label). |
+| `DELETE` | `/{key_id}` | **Revokes** the key (soft revoke); it stops working immediately. |
+
+The dashboard **API Keys** page supports multiple keys, optional names on create, rename, and revoke.
+
+---
+
+## Voice catalog — TTS voices
+
+Base path: **`/api/v1/tts-voices`**
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `""` | List all TTS voices. |
+| `POST` | `""` | Create a voice row. |
+| `GET` | `/{voice_id}` | Get by id. |
+| `GET` | `/provider/{provider_id}` | List voices for a provider. |
+
+Use **`GET /api/v1/tts-voices`** (no trailing slash required).
+
+---
+
+For interactive request/response shapes, continue to use the **Voice Agent API** OpenAPI tab and [`kupe-voice-agent.openapi.yaml`](./kupe-voice-agent.openapi.yaml).
