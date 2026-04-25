@@ -1,0 +1,297 @@
+---
+title: "Voice Agent HTTP API"
+description: "REST reference for agents, providers, outbound calls, knowledge files, and post-call webhooks (Kupe platform)."
+---
+
+<Note>
+  For **Mintlify-style interactive docs** (grouped endpoints, **Try it**, request/response panels), open the **API reference** tab — start at [Introduction](/api-reference/introduction), then use the **Voice Agent API** sidebar (generated from `kupe-voice-agent.openapi.yaml`). Try **GET** `/health` first (no API key), then **GET** `/api/v1/me` with your **`x-api-key`** or **Bearer** token.
+</Note>
+
+## Base URL and authentication
+
+All protected routes use the production API origin:
+
+`https://api.kupe.in`
+
+For **server integrations**, send the Kupe API key (no `Bearer` prefix):
+
+```http
+x-api-key: <YOUR_KUPE_API_KEY>
+```
+
+The key is tied to a **user account** in Kupe (same as dashboard login). For protected `/api/v1/**` routes, backend resolves user context from the key/JWT automatically (for example file upload/listing endpoints).
+
+For **dashboard / browser** flows you can instead send a Supabase session token:
+
+```http
+Authorization: Bearer <SUPABASE_JWT>
+```
+
+**`GET /api/v1/me`** works with **either** `x-api-key` **or** `Bearer` and returns **`user_id`**, **`email`**, optional **`phone`**, **`profile_image_url`** (when set on the auth user or OAuth provider metadata), **`auth`** (`api_key` or `bearer`), **`full_name`**, and a sanitized **`user_metadata`** object.
+
+### Sandbox values used for this document
+
+These credentials were used to **manually** verify connectivity against `https://api.kupe.in` on **2026-04-23** (see [Live verification](#live-verification-2026-04-23) below).
+
+| Variable | Value |
+|----------|--------|
+| API key | `N8WJOk0TSvUGswbCk8EcaZQh6Symt0mQ` |
+| User ID | `fbbf7286-4679-4bc1-983a-6d09a048be12` |
+
+Treat API keys like passwords: **this page embeds a real key for integration testing**—rotate it in the Kupe dashboard after you finish QA, and prefer environment variables in shipped clients.
+
+---
+
+## Field mapping (client checklist → Kupe)
+
+Your integration checklist maps to Kupe as follows.
+
+| Your concept | Kupe implementation |
+|--------------|---------------------|
+| **name** | `agent.name` on **`POST /api/v1/agents/simple`** (then optional **`PUT /api/v1/agents/{agent_id}`** to rename) |
+| **prompt** | `agent_model_config.system_prompt` |
+| **call_type** | Inbound: map a **phone line** to an assistant via **`POST /api/v1/phone/mapping`** (see [Incoming calls](#incoming-calls-pstn--map-a-line-to-an-assistant)) or the dashboard. Outbound: `POST /api/call/create_call` with `agent_id` |
+| **transcriber** | `transcriber_config` (`transcriber_model_name`, `language`) — legacy `provider_id` still accepted; pipeline STT model id comes from the catalog row |
+| **model** | `agent_model_config` (`model_name`, …) — legacy `model_provider_id` still accepted |
+| **voice** | `tts_config` (`tts_model_name`, optional `language`, `voice_name`, `voice_parameters`) — legacy `tts_provider_id` still accepted |
+| **extracted_variables** | Configure **Post analysis** (structured output / HTTP tool) on the agent in the dashboard; see [Webhooks](#5-webhooks-post-call) |
+| **context_params** | Passed at call time via your own telephony URL parameters or automation; the stock `create_call` query API does not accept a JSON body—extend or wrap if you need a single JSON contract |
+
+---
+
+## Incoming calls (PSTN) — map a line to an assistant
+
+When someone dials your **purchased PSTN number**, Kupe needs a **mapping** from that line to the **agent** (or **workflow**) that should run.
+
+**Number format:** store and send destinations in **international E.164** where possible — for example **+91** plus ten digits for a typical India mobile, or **+1** plus ten digits for a US/Canada NANP number (URL-encode **`+`** as **`%2B`** in query strings).
+
+1. **Register the line** under your account (if it is not already). Use the **`/api/v1/phone`** routes in [Platform REST APIs](/api-reference/platform-rest-apis) and the **Incoming calls** group in the OpenAPI sidebar (**Try it** on **`POST /api/v1/phone/mapping`**).
+2. **Create the mapping** with **`POST https://api.kupe.in/api/v1/phone/mapping`**:
+
+```json
+{
+  "agent_id": "<your-agent-uuid>",
+  "phone_number_id": "<phone-row-uuid>"
+}
+```
+
+- Send exactly one of **`agent_id`** or **`workflow_id`**.
+- Authenticate with **`x-api-key`** or **Bearer** JWT. You do not need **`webhook_url`**, **`config_source`**, or **`user_id`** in the body; the server fills those from deployment defaults and the authenticated user when they are omitted.
+
+**Inspect:** **`GET /api/v1/phone/mapping/agent/{agent_id}`**, **`GET /api/v1/phone/mapping/{phone_number_id}`**.
+
+---
+
+## 1. Agent management
+
+### List agents (summary)
+
+`GET /api/v1/agents/summary`
+
+Query: `page`, `page_size`, optional `name_search`.
+
+### Get full agent
+
+`GET /api/v1/agents/{agent_id}`
+
+Returns `CompleteAgentResponse`: `agent` plus `configurations` (`model_config`, `tts_config`, `transcriber_config`, `vad_config`, `inferencing_config`, `tools`, `agent_specific_config`).
+
+### Create agent (defaults, then configure)
+
+Use **`POST /api/v1/agents/simple`** with `{ "name": "...", "description": "..." }` to create an agent with platform defaults for STT, TTS, LLM, and VAD. The response includes **`agent.id`**.
+
+To set catalog models and voice, call **`PUT /api/v1/agents/{agent_id}`** with a partial body (same nested keys as in the OpenAPI **`CreateAgentRequest`** schema: `agent`, `agent_model_config`, `tts_config`, `transcriber_config`, `agent_specific_config`, …). **VAD** and **inferencing** stay on platform defaults unless you change them in advanced flows.
+
+**Catalog strings:** use **`model_name`**, **`tts_model_name`**, **`transcriber_model_name`** (legacy `*_provider_id` / STT **`provider_id`** still work). See [Model providers](/assistants/model-providers) and [Supported models & providers](/supported-models).
+
+### Create simple agent (defaults only)
+
+`POST /api/v1/agents/simple`
+
+Body: `{ "name": "...", "description": "..." }` — fastest path when defaults are acceptable end-to-end.
+
+### Update agent
+
+`PUT /api/v1/agents/{agent_id}`
+
+Body: `AgentUpdateRequest` (partial fields supported). Active agents reject config changes unless `force_update=true` query flag is used where supported.
+
+### Delete agent
+
+`DELETE /api/v1/agents/{agent_id}`
+
+---
+
+## 2. Provider discovery
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/providers/model` | LLM rows (`id`, `provider_name`, `model_name`, …) |
+| `GET /api/v1/providers/stt` | Speech-to-text providers |
+| `GET /api/v1/providers/tts` | Text-to-speech providers |
+| `GET /api/v1/providers/vad` | VAD providers |
+| `GET /api/v1/providers/all` | All of the above in one JSON object |
+
+Use these lists to populate UI or to resolve **codes** vs **UUIDs** for agent creation.
+
+---
+
+## 3. Outbound call initiation
+
+`POST /api/call/create_call`
+
+This route is **not** under `/api/v1`. You can pass `user_id` directly, or omit it and let backend resolve from `x-api-key` or `Authorization: Bearer <token>`.
+
+| Query parameter | Required | Description |
+|-----------------|----------|-------------|
+| `phoneNumber` | Yes | Destination — use **E.164** with country code (e.g. **+91**… India, **+1**… US/Canada); normalized server-side |
+| `user_id` | No | Owner user UUID. If omitted, backend resolves from API key / Bearer token |
+| `agent_id` | No* | Agent to run (*recommended for voice agents) |
+| `workflow_id` | No | Alternative to `agent_id` |
+| `phone_number_id` | No | Specific outbound line from `phone_numbers` |
+
+When a **`phone_numbers`** row is resolved (explicit id or via mapping), Kupe uses that row’s **configured telephony backend** for the dial. If no row is found, a **fallback** path may use the first available line for the user (deployment-dependent).
+
+Optional header `Origin`: if present, must pass Kupe’s allow-list (`validate_origin`). Omit `Origin` for server-to-server curl.
+
+**Examples**
+
+US/Canada-style destination:
+
+```bash
+curl -sS -X POST \
+  -H "x-api-key: <YOUR_KUPE_API_KEY>" \
+  'https://api.kupe.in/api/call/create_call?phoneNumber=%2B15551234567&agent_id=<AGENT_UUID>'
+```
+
+India-style destination (URL-encoded `+`):
+
+```bash
+curl -sS -X POST \
+  -H "Authorization: Bearer <SUPABASE_JWT>" \
+  'https://api.kupe.in/api/call/create_call?phoneNumber=%2B919876543210&agent_id=<AGENT_UUID>'
+```
+
+**Typical success JSON**
+
+```json
+{
+  "status": "success",
+  "message": "Call initiated successfully using user-specific credentials",
+  "provider": "<internal>",
+  "call_sid": "<external-call-id>",
+  "from_phone_number": "+1xxxxxxxxxx",
+  "user_id": "<USER_UUID>"
+}
+```
+
+Treat **`call_sid`** as the unique call identifier when the field is returned (`call_id` in your own logs). Billing and analytics may also use internal session IDs.
+
+**Failure cases**
+
+- `402` — billing / credits
+- `401` — `user_id` missing and no valid `x-api-key` / Bearer token
+- `403` — invalid `Origin`
+- `500` — no configured from-number, telephony error, etc.
+
+---
+
+## 4. Knowledge base & files
+
+There is **no** single public “scrape this URL into the vector DB” REST route for voice agents; URL ingestion exists in other product flows (e.g. text builder over WebSocket). For HTTP integrations, use **file upload + agent mapping**.
+
+### Upload file (RAG)
+
+`POST /api/v1/files/upload` (`multipart/form-data`)
+
+| Field | Description |
+|-------|-------------|
+| `file` | Document / audio / etc. (see `GET /api/v1/files/supported-formats`) |
+| `agent_id` | Optional — when set, chunks are tagged for that agent’s retrieval |
+
+### List user files
+
+`GET /api/v1/files/user/me`
+
+### Get / update / delete file
+
+- `GET /api/v1/files/{file_id}`
+- `PUT /api/v1/files/{file_id}`
+- `DELETE /api/v1/files/{file_id}`
+
+### Attach / detach file to agent (mappings)
+
+| Method | Path | Action |
+|--------|------|--------|
+| `POST` | `/api/v1/agent-files-mappings/create` | Body: `CreateMappingRequest` (`agent_id`, `upload_file_id`, …) |
+| `GET` | `/api/v1/agent-files-mappings/agent/{agent_id}` | List files for agent |
+| `DELETE` | `/api/v1/agent-files-mappings/agent/{agent_id}/file/{upload_file_id}` | Detach |
+
+### Vector search (optional)
+
+`POST /api/v1/search/semantic?agent_id={agent_id}` — RAG search scoped to an agent’s documents.
+
+---
+
+## 5. Webhooks (post-call)
+
+Kupe does **not** emit a single fixed “call completed” JSON to your URL unless you configure it:
+
+1. In the dashboard, open the agent → **Post analysis**.
+2. Add **structured output** and/or an **HTTP integration** (tool) that runs after the call.
+
+The HTTP tool executor sends a **POST** (by default) to your endpoint with a body derived from the tool schema and the analysis pipeline—shape is **per tool definition**, not one global envelope.
+
+Document for your clients:
+
+- **Completion-style fields** (`call_duration`, `extracted_variables`, `summary`, `full_conversation`, `recording_url`, `from_number`, `to_number`, `cost`, `sentiment_analysis`) should be modeled as **outputs in the structured prompt / JSON schema** or as **arguments** in the HTTP tool schema so your webhook receives exactly those keys.
+
+- **Error events** — map failed HTTP tool executions or `5xx` from your endpoint to your “error webhook”; Kupe surfaces tool errors in post-analysis logs.
+
+For product overview, see [Post analysis](/assistants/post-analysis).
+
+---
+
+## 6. RBAC, API key scopes, and feature flags
+
+### RBAC (API keys)
+
+API keys must pass `RBACMiddleware`:
+
+- Paths allowed for the **developer** role come from `milli_ai_backend/rbac_paths.json` (e.g. `/api/v1/agents`, `/api/v1/providers`, `/api/v1/files`, `/api/v1/agent-files-mappings`, `/api/v1/search`, `/api/v1/phone`, …).
+- Rows in **`api_key_scopes`** (`allowed_path_prefix`, `allowed_method`) are now evaluated **in addition** to role prefixes, so narrowly scoped keys work.
+
+Unknown `request.state.role` values now fall back to **developer** path list so keys stay usable.
+
+### Feature flags
+
+If the same user hits the dashboard with a **Bearer** token, `FeatureAccessMiddleware` may gate some routes by `user_roles.feature_flags`. API-key-only requests hit FeatureAccess **before** the user is attached and therefore **bypass** that gate for mapped paths—RBAC remains the control for keys.
+
+---
+
+## Live verification (2026-04-23)
+
+Commands run from a developer machine against production:
+
+```bash
+API_KEY='N8WJOk0TSvUGswbCk8EcaZQh6Symt0mQ'
+curl -sS -H "x-api-key: $API_KEY" 'https://api.kupe.in/api/v1/providers/model'
+curl -sS -H "x-api-key: $API_KEY" 'https://api.kupe.in/api/v1/agents/summary?page=1&page_size=3'
+```
+
+**Observed**
+
+| Request | HTTP | Body (abridged) |
+|---------|------|-----------------|
+| `GET /health` | **200** | `{"status":"healthy","service":"milli-ai-backend",...}` |
+| `GET /api/v1/providers/model` (with `x-api-key`) | **403** | `{"detail":"Forbidden: API Key does not have required scopes"}` |
+| `GET /api/v1/agents/summary` (with `x-api-key`) | **403** | same |
+
+So at verification time, **authenticated REST routes failed RBAC** for this key. After deploying this repository’s updates (`rbac_middleware.py`, expanded `rbac_paths.json`), re-run the same curls: you should receive **200** and JSON provider/agent payloads.
+
+---
+
+## Changelog (this repo)
+
+- **RBAC:** API keys honor `api_key_scopes` rows; unknown roles fall back to developer paths; developer path includes providers, agent-files-mappings, search, phone.
+- **Agents:** Prefer **`model_name`**, **`tts_model_name`**, **`transcriber_model_name`** on **`PUT /api/v1/agents/{agent_id}`**; legacy **`model_provider_id`**, **`tts_provider_id`**, and STT **`provider_id`** still accept the same catalog **codes** or row UUIDs.

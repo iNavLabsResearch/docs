@@ -1,0 +1,83 @@
+---
+title: "Model providers"
+description: "How to reference LLM, TTS, and STT in the agent API, with logos and language-code conventions."
+---
+
+Use this guide when calling **`PUT /api/v1/agents/{agent_id}`** (after **`POST /api/v1/agents/simple`** if you start from defaults): pass **catalog codes** (what you see below or from the live provider APIs), not database row UUIDs, unless you already have the UUID from your environment.
+
+## Live catalogs (authoritative)
+
+With your **`x-api-key`**:
+
+| Catalog | Endpoint |
+| :--- | :--- |
+| LLM | `GET https://api.kupe.in/api/v1/providers/model` |
+| TTS | `GET https://api.kupe.in/api/v1/providers/tts` |
+| STT | `GET https://api.kupe.in/api/v1/providers/stt` |
+
+Each row includes fields such as `model_name`, `provider_name`, `supported_languages`, and `id`. **Agent update** accepts preferred keys **`agent_model_config.model_name`**, **`tts_config.tts_model_name`**, **`transcriber_config.transcriber_model_name`** (legacy `*_provider_id` fields are equivalent) and resolves them to internal UUIDs before saving.
+
+See also: [Supported models & providers](/supported-models) (static tables and model names) and the **Voice Agent API** in the [API reference](/api-reference/introduction).
+
+## Language codes by provider
+
+Use the convention that matches the **STT / TTS** row you selected. Wrong codes usually surface as provider errors at call time, not as Kupe validation errors.
+
+<Tabs>
+  <Tab title="Sarvam (BCP-47)">
+    Sarvam expects **region-qualified** tags where the provider documents them, e.g. **`hi-IN`**, **`gu-IN`**, **`en-IN`**. Use the same pattern as in Sarvam’s docs for other locales.
+
+    Put the value in **`transcriber_config.language`**. For TTS you can send **`tts_config.language`** (Kupe merges it into **`voice_parameters.language`**) or set **`voice_parameters.language`** yourself.
+  </Tab>
+  <Tab title="Other providers (short codes)">
+    Many engines (e.g. Deepgram, Whisper-class, Azure batch STT) expect **short ISO-style codes**: **`hi`**, **`gu`**, **`en`**, **`ta`**, etc. Use what the provider row’s `supported_languages` or vendor documentation lists for that model.
+
+    When in doubt, call the **STT** or **TTS** list endpoint above and align with the **`supported_languages`** array on the chosen row.
+  </Tab>
+</Tabs>
+
+## Logos and quick reference
+
+Logos below match the in-app catalog (`app.kupe.in`). **Model names** are examples — always confirm against **`GET …/providers/model`** for your tenant.
+
+### LLM
+
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+<div>
+
+#### <img src="https://app.kupe.in/images/logo_providers/openai.webp" width="24" height="24" style={{ verticalAlign: 'middle', marginRight: '0.35rem', display: 'inline-block' }} /> OpenAI / Azure router
+
+Examples: `gpt-4.1-mini`, `gpt-4.1`, `openai-gpt-4.1-nano`
+
+</div>
+
+<div>
+
+#### <img src="https://app.kupe.in/images/logo_providers/groq.jpeg" width="24" height="24" style={{ verticalAlign: 'middle', marginRight: '0.35rem', display: 'inline-block' }} /> Groq
+
+Examples: `groq-llama-3.3-70b`, `groq-gpt-oss-20b`
+
+</div>
+
+<div>
+
+#### <img src="https://app.kupe.in/images/logo_providers/deepinfra.jpg" width="24" height="24" style={{ verticalAlign: 'middle', marginRight: '0.35rem', display: 'inline-block' }} /> DeepInfra
+
+Examples: `deepinfra-qwen`, `deepinfra-llama`
+
+</div>
+
+</div>
+
+### TTS
+
+Use **`tts_config.tts_model_name`** = `model_name`, `provider_name`, **`provider:model_name`**, or row `id`. Examples: `tts-1`, **`bulbul:v2`**. Legacy **`tts_provider_id`** in JSON means the same thing.
+
+### STT
+
+Use **`transcriber_config.transcriber_model_name`** = STT `model_name`, transcriber **`name`**, or row `id` (legacy **`provider_id`** is equivalent), and **`transcriber_config.language`**. The pipeline STT model id is taken from the **`transcriber_providers`** row — do not send a duplicate `transcriber_config.model_name` on create.
+
+---
+
+**Refreshing this page:** run the three `GET` catalog calls and compare `model_name` / `supported_languages` to the tables on [Supported models & providers](/supported-models); update product copy when vendors add models.

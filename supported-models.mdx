@@ -1,0 +1,233 @@
+---
+title: "Supported models & providers"
+description: "Catalog of LLM, TTS, and STT names for Kupe agents and APIs (aligned with app.kupe.in)."
+---
+
+## Overview
+
+Kupe supports the models and voices below. When configuring an agent via **`PUT /api/v1/agents/{agent_id}`** (or after **`POST /api/v1/agents/simple`**), prefer **`agent_model_config.model_name`**, **`tts_config.tts_model_name`**, and **`transcriber_config.transcriber_model_name`** (legacy `*_provider_id` / `provider_id` still work). Values are **catalog codes** or row UUIDs — the server resolves to internal ids before saving.
+
+**Resolution order** (server-side when creating or updating an agent):
+
+1. If the string is a **UUID**, look up by primary key **`id`**.
+2. Otherwise resolve by **catalog fields** (LLM `model_name`, TTS `model_name` / `provider_name` / `provider:model`, STT `model_name` or `name`). Ambiguous names prefer the row marked **`is_default`**, then a stable sort by `id`.
+
+Authoritative list for your tenant: **`GET https://api.kupe.in/api/v1/providers/model`**, **`.../tts`**, **`.../stt`** with your `x-api-key`. This page mirrors the product catalog; drift is possible until you refresh from the API.
+
+See also: [Model providers](/assistants/model-providers) (language codes + create-agent field notes), [Voice Agent HTTP API](/voice-agent-api), and the **API reference** tab ([introduction](/api-reference/introduction)).
+
+<style dangerouslySetInnerHTML={{__html: `
+  .provider-section h3 {
+    margin-bottom: 0.5rem !important;
+  }
+  .provider-section table {
+    margin-top: 0.5rem !important;
+  }
+  .provider-section table tbody tr td {
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.25rem !important;
+    line-height: 1.3 !important;
+  }
+`}} />
+
+## LLM models
+
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+<div className="provider-section">
+
+### <img src="https://app.kupe.in/images/logo_providers/azure.png" width="28" height="28" style={{verticalAlign: 'middle', marginRight: '0.5rem', display: 'inline-block'}} /> Azure
+
+| Model name |
+| :--- |
+| `gpt-4.1` |
+| `gpt-4.1-mini` |
+| `gpt-oss-120b` |
+| `model-router` |
+
+</div>
+
+<div className="provider-section">
+
+### <img src="https://app.kupe.in/images/logo_providers/openai.webp" width="28" height="28" style={{verticalAlign: 'middle', marginRight: '0.5rem', display: 'inline-block'}} /> OpenAI
+
+| Model name |
+| :--- |
+| `openai-gpt-4.1` |
+| `openai-gpt-4.1-mini` |
+| `openai-gpt-4.1-nano` |
+
+</div>
+
+<div className="provider-section">
+
+### <img src="https://app.kupe.in/images/logo_providers/groq.jpeg" width="28" height="28" style={{verticalAlign: 'middle', marginRight: '0.5rem', display: 'inline-block'}} /> Groq
+
+| Model name |
+| :--- |
+| `groq-llama-3.3-70b` |
+| `groq-qwen-32b` |
+| `groq-gpt-oss-20b` |
+| `groq-compound` |
+| `groq-gpt-oss-120b` |
+
+</div>
+
+<div className="provider-section">
+
+### <img src="https://app.kupe.in/images/logo_providers/deepinfra.jpg" width="28" height="28" style={{verticalAlign: 'middle', marginRight: '0.5rem', display: 'inline-block'}} /> DeepInfra
+
+| Model name |
+| :--- |
+| `llama-3.3-70b` |
+| `mistral-small` |
+| `qwen-14b` |
+| `hermes-3-70b` |
+| `glm-4.5` |
+| `deepinfra-gpt-oss-120b` |
+| `llama-4-scout` |
+| `kimi-k2` |
+
+</div>
+
+<div className="provider-section">
+
+### <img src="https://app.kupe.in/images/logo_providers/gemini.webp" width="28" height="28" style={{verticalAlign: 'middle', marginRight: '0.5rem', display: 'inline-block'}} /> Gemini
+
+| Model name |
+| :--- |
+| `gemini-2.5-flash` |
+| `gemini-2.5-flash-lite` |
+| `gemini-2.0-flash` |
+
+</div>
+
+<div className="provider-section">
+
+### <img src="https://app.kupe.in/images/logo_providers/fireworks.png" width="28" height="28" style={{verticalAlign: 'middle', marginRight: '0.5rem', display: 'inline-block'}} /> Fireworks
+
+| Model name |
+| :--- |
+| `fireworks-gpt-oss-120b` |
+| `deepseek-v3` |
+
+</div>
+
+<div className="provider-section">
+
+### <img src="https://app.kupe.in/images/logo_providers/kupe.png" width="28" height="28" style={{verticalAlign: 'middle', marginRight: '0.5rem', display: 'inline-block'}} /> Kupe
+
+| Model name |
+| :--- |
+| `gemma-4-26B-A4B-it` |
+
+</div>
+
+</div>
+
+## Voices (TTS)
+
+Use these as **`voice_name`**, set **`tts_config.tts_model_name`** to the TTS row `id` or a catalog match from **`GET /api/v1/providers/tts`**, and optionally **`tts_config.language`** (stored as `voice_parameters.language`).
+
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+<div className="provider-section">
+
+### <img src="https://app.kupe.in/images/logo_providers/cartesia.png" width="28" height="28" style={{verticalAlign: 'middle', marginRight: '0.5rem', display: 'inline-block'}} /> Cartesia
+
+| Voice name |
+| :--- |
+| `darla` |
+| `jacqline` |
+| `priya` |
+| `carolina` |
+| `blake` |
+| `ronald` |
+| `jake` |
+
+</div>
+
+<div className="provider-section">
+
+### <img src="https://app.kupe.in/images/logo_providers/deepgram.jpeg" width="28" height="28" style={{verticalAlign: 'middle', marginRight: '0.5rem', display: 'inline-block'}} /> Deepgram
+
+| Voice name |
+| :--- |
+| `thalia` |
+| `aries` |
+| `apollo` |
+| `andromeda` |
+| `asteria` |
+
+</div>
+
+</div>
+
+## Transcribers (STT)
+
+Use **`transcriber_config.transcriber_model_name`** as the STT row `id` or a matching **`model_name` / `name`** from **`GET /api/v1/providers/stt`** (legacy **`provider_id`** is the same value), plus **`transcriber_config.language`**. The API stores the pipeline STT model id from that catalog row — it is **not** a separate field on create. Prefer **`language`** as a string (e.g. `hi-IN`); a single-element array is coerced.
+
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+<div className="provider-section">
+
+### <img src="https://app.kupe.in/images/logo_providers/deepgram.jpeg" width="28" height="28" style={{verticalAlign: 'middle', marginRight: '0.5rem', display: 'inline-block'}} /> Deepgram
+
+| Catalog name |
+| :--- |
+| `deepgram_nova_3` |
+| `deepgram_flux` |
+
+</div>
+
+<div className="provider-section">
+
+### <img src="https://app.kupe.in/images/logo_providers/cartesia.png" width="28" height="28" style={{verticalAlign: 'middle', marginRight: '0.5rem', display: 'inline-block'}} /> Cartesia
+
+| Catalog name |
+| :--- |
+| `cartesia` (Ink Whisper) |
+
+</div>
+
+<div className="provider-section">
+
+### <img src="https://app.kupe.in/images/logo_providers/assemblyai.jpeg" width="28" height="28" style={{verticalAlign: 'middle', marginRight: '0.5rem', display: 'inline-block'}} /> AssemblyAI
+
+| Catalog name |
+| :--- |
+| `assembly_ai` |
+
+</div>
+
+<div className="provider-section">
+
+### <img src="https://app.kupe.in/images/logo_providers/soniox.png" width="28" height="28" style={{verticalAlign: 'middle', marginRight: '0.5rem', display: 'inline-block'}} /> Soniox
+
+| Catalog name |
+| :--- |
+| `soniox` |
+
+</div>
+
+<div className="provider-section">
+
+### <img src="https://app.kupe.in/images/logo_providers/sarvam.jpg" width="28" height="28" style={{verticalAlign: 'middle', marginRight: '0.5rem', display: 'inline-block'}} /> Sarvam
+
+| Catalog name |
+| :--- |
+| `sarvam` |
+
+</div>
+
+<div className="provider-section">
+
+### <img src="https://app.kupe.in/images/logo_providers/whisper.png" width="28" height="28" style={{verticalAlign: 'middle', marginRight: '0.5rem', display: 'inline-block'}} /> Faster Whisper
+
+| Catalog name |
+| :--- |
+| `faster_whisper` |
+
+</div>
+
+</div>

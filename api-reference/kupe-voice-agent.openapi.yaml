@@ -1,0 +1,2783 @@
+openapi: 3.1.0
+info:
+  title: Kupe Voice Agent API
+  description: |
+    **Production base URL:** `https://api.kupe.in` — prepend it to each **path** below to get the full request URL.
+
+    | Path | Full URL |
+    |------|----------|
+    | `GET /health` | `https://api.kupe.in/health` |
+    | `GET /api/v1/me` | `https://api.kupe.in/api/v1/me` (requires `x-api-key` **or** `Authorization: Bearer`) |
+    | `GET /api/v1/me/users` | `https://api.kupe.in/api/v1/me/users` |
+    | `GET /api/v1/phone` | `https://api.kupe.in/api/v1/phone` (all provisioned phone lines) |
+    | `POST /api/v1/phone/mapping` | `https://api.kupe.in/api/v1/phone/mapping` (inbound line → agent/workflow) |
+    | `GET /api/v1/agents` | `https://api.kupe.in/api/v1/agents` |
+    | `POST /api/v1/agents/simple` | `https://api.kupe.in/api/v1/agents/simple` |
+    | `GET/PUT/DELETE /api/v1/agents/{agent_id}` | `https://api.kupe.in/api/v1/agents/{agent_id}` |
+    | `GET /api/v1/providers/model` | `https://api.kupe.in/api/v1/providers/model` |
+    | `GET /api/v1/providers/tts` | `https://api.kupe.in/api/v1/providers/tts` |
+    | `GET /api/v1/providers/stt` | `https://api.kupe.in/api/v1/providers/stt` |
+    | `GET /api/v1/providers/all` | `https://api.kupe.in/api/v1/providers/all` |
+    | `GET /api/v1/tts-voices` | `https://api.kupe.in/api/v1/tts-voices` |
+    | `POST /api/call/create_call` | `https://api.kupe.in/api/call/create_call` |
+    | `POST /api/v1/files/upload` | `https://api.kupe.in/api/v1/files/upload` |
+    | `GET /api/v1/files/supported-formats` | `https://api.kupe.in/api/v1/files/supported-formats` |
+    | `GET /api/v1/files/user/me` | `https://api.kupe.in/api/v1/files/user/me` |
+    | `GET/DELETE /api/v1/files/{file_id}` | `https://api.kupe.in/api/v1/files/{file_id}` |
+    | `POST /api/v1/agent-files-mappings/create` | `https://api.kupe.in/api/v1/agent-files-mappings/create` |
+    | `GET /api/v1/agent-files-mappings/agent/{agent_id}` | `https://api.kupe.in/api/v1/agent-files-mappings/agent/{agent_id}` |
+    | `DELETE .../agent/{agent_id}/file/{upload_file_id}` | `https://api.kupe.in/api/v1/agent-files-mappings/agent/{agent_id}/file/{upload_file_id}` |
+    | `POST /api/v1/search/semantic` | `https://api.kupe.in/api/v1/search/semantic` |
+    | `POST /api/v1/search/hybrid` | `https://api.kupe.in/api/v1/search/hybrid` |
+    | `GET /api/v1/call-analytics` | `https://api.kupe.in/api/v1/call-analytics` (list / `page`+`page_size` / `?request_id=` one session) |
+    | `GET /api/v1/call-analytics/export` | Export call logs (ZIP); query `request_id` or date range |
+    | `GET /api/v1/billing/credit-balance` | `https://api.kupe.in/api/v1/billing/credit-balance` |
+    | `GET /api/v1/billing/usage/records` | Usage grouped by session (cost, duration, agent) |
+    | `GET /api/v1/billing/usage/export` | Export usage (CSV/JSON per backend) |
+    | `GET /api/v1/billing/usage/summary` | Aggregated usage for charts |
+    | `GET /api/v1/billing/usage/overview` | Total and this-month usage totals |
+    | `GET /api/v1/billing/usage-records` | Usage organized by call sessions |
+    | `GET /api/v1/tool-endpoint-defs` | List or create HTTP tool definitions |
+    | `GET /api/v1/tools-mcp-server-defs` | List or create MCP server tool definitions |
+    | `GET/POST/PATCH /api/v1/agents/{agent_id}/tools` | Agent tool mappings |
+
+    **Try it / API playground:** Response bodies use **schemas** (and prose on each operation) so the playground shows your **live** result after **Send**, without a second static “example response” panel duplicating the same JSON. Illustrative JSON still appears **in the page text** where noted (for example `GET /health`).
+
+    **Errors** from the FastAPI backend are typically `{ "detail": "…" }` — see `ErrorDetail` in **Schemas**.
+
+    REST APIs for voice agents, providers, outbound PSTN calls, knowledge (files + RAG), and **documented webhook payloads**
+    your server receives when you configure post-call HTTP integrations.
+
+    **Field mapping (client spec):** `name` → `agent.name`; `prompt` → `agent_model_config.system_prompt`;
+    `transcriber` / `model` / `voice` → nested configs on **`PUT /api/v1/agents/{agent_id}`** (after **`POST /api/v1/agents/simple`**); `call_type` inbound/outbound →
+    dashboard phone mapping + `POST /api/call/create_call`; `extracted_variables` → post-analysis structured output;
+    `context_params` → bring your own telephony metadata (stock outbound uses query params).
+
+    **LLM / TTS / STT:** pass **catalog codes** (`model_name`, `provider_name`, or `provider:model_name` for TTS) or row UUIDs — the API **resolves codes to internal ids** before save (never send arbitrary strings as UUIDs). VAD and inferencing toggles are **not** in the default create body; the platform applies defaults. See [Model providers](/assistants/model-providers) and [Supported models & providers](/supported-models).
+  version: "1.0.0"
+
+servers:
+  - url: https://api.kupe.in
+    description: Production
+
+tags:
+  - name: Service
+    description: Public health check and authenticated **current user** profile.
+  - name: "Current user"
+    description: Signed-in user details (`GET /api/v1/me`) and accessible users (`GET /api/v1/me/users`).
+  - name: "Agent Management"
+    description: List, create (defaults), read, update, and delete voice agents.
+  - name: Providers
+    description: LLM, TTS, and STT catalogs plus TTS voice rows (`GET /api/v1/tts-voices`).
+  - name: "Phone numbers"
+    description: >
+      List all provisioned **phone_numbers** rows (`GET /api/v1/phone`). Use each row’s **`id`** as **`phone_number_id`**
+      for inbound mapping and outbound calls. Prefer **E.164** numbers where possible.
+  - name: "Incoming calls"
+    description: >
+      Map an assistant or workflow to a **purchased phone line** so inbound PSTN hits the right runtime.
+      Use **E.164** numbers where possible (e.g. **+91**… for India, **+1**… for the US).
+  - name: "Outbound calls"
+    description: Initiate outbound PSTN calls.
+  - name: "Knowledge base"
+    description: Files, agent–file mappings, and semantic or hybrid RAG search.
+  - name: "Call logs"
+    description: >
+      Call session analytics: list, pagination, single session by `request_id`, and exports.
+      Responses may include `post_call_analysis_results` when policy allows.
+  - name: "Billing and usage"
+    description: >
+      Credit balance, usage records, and per-session cost breakdowns.
+      With **`x-api-key`**, only **GET** (and HEAD/OPTIONS) are allowed on `/api/v1/billing/**`;
+      checkout and other writes require a **Bearer** session token.
+  - name: "Post-call analysis"
+    description: >
+      User-scoped analysis rules (`/api/v1/post-analysis/rules`) and mapping rules to agents
+      (`/api/v1/agents/{agent_id}/post-analysis`).
+  - name: "Tools and MCP"
+    description: >
+      Custom HTTP tool definitions, MCP server definitions, and attaching tools to agents
+      (`/api/v1/agents/{agent_id}/tools`).
+  - name: "API keys"
+    description: Create, list, rename (label), and revoke Kupe API keys for integrations.
+  - name: Webhooks
+    description: Example payloads Kupe can POST to **your** HTTPS URL 
+      (post-analysis HTTP tool).
+
+security:
+  - KupeApiKey: []
+
+components:
+  securitySchemes:
+    KupeApiKey:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: Kupe dashboard API key for your user.
+      x-default: "YOUR_KUPE_API_KEY"
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase session JWT from the Kupe dashboard (same token the app uses).
+
+  schemas:
+    MeResponse:
+      type: object
+      required: [user_id, auth]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: Supabase Auth user id for this session.
+        email:
+          type: string
+          format: email
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        profile_image_url:
+          type: string
+          format: uri
+          nullable: true
+          description: From `user_metadata` (e.g. `avatar_url`, `picture`) or provider identities when available.
+        auth:
+          type: string
+          enum: [bearer, api_key]
+        full_name:
+          type: string
+          nullable: true
+        user_metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: Sanitized copy of public metadata keys (no secrets).
+
+    AgentPhoneMappingRequest:
+      type: object
+      required: [phone_number_id]
+      description: >
+        Link exactly one of **`agent_id`** or **`workflow_id`** to a **`phone_number_id`**.
+
+        **Server-managed fields:** When you authenticate with **Bearer** or **`x-api-key`**, you do not need to send
+        **`webhook_url`**, **`config_source`**, or **`user_id`**. The API derives the inbound voice webhook from the
+        deployment base URL, defaults the config source for standard PSTN/Twilio lines, and uses the authenticated
+        user for ownership checks against the phone row. (Optional body overrides remain supported for internal or
+        legacy clients.)
+      properties:
+        agent_id:
+          type: string
+          format: uuid
+          nullable: true
+        workflow_id:
+          type: string
+          format: uuid
+          nullable: true
+        phone_number_id:
+          type: string
+          format: uuid
+
+    ErrorDetail:
+      type: object
+      properties:
+        detail:
+          type: string
+          example: "Forbidden: API Key does not have required scopes"
+
+    CreateAgentRequest:
+      type: object
+      description: >
+        Body for **`PUT /api/v1/agents/{agent_id}`** (partial update). Same nested shape as a full agent payload;
+        omitted keys are left unchanged. Not used for `POST /api/v1/agents/simple`.
+      required: [agent]
+      properties:
+        agent:
+          type: object
+          required: [name]
+          properties:
+            name:
+              type: string
+              example: "Support Voice Agent"
+            description:
+              type: string
+            is_active:
+              type: boolean
+              default: true
+            recording_enabled:
+              type: boolean
+              default: true
+        agent_model_config:
+          $ref: "#/components/schemas/ModelConfig"
+        tts_config:
+          $ref: "#/components/schemas/TtsConfig"
+        transcriber_config:
+          $ref: "#/components/schemas/TranscriberConfig"
+        agent_specific_config:
+          $ref: "#/components/schemas/AgentSpecificConfigInput"
+
+    ModelConfig:
+      type: object
+      description: >
+        **`model_name`**: LLM catalog code or row UUID. Requests may also send the legacy property
+        **`model_provider_id`** with the same meaning (OpenAPI lists one field to avoid duplicate inputs).
+      properties:
+        model_name:
+          type: string
+          description: LLM catalog code or row UUID (`GET /api/v1/providers/model`).
+          example: "gpt-4.1-mini"
+        temperature:
+          type: number
+          format: float
+          example: 0.7
+        max_tokens:
+          type: integer
+          example: 256
+        system_prompt:
+          type: string
+          example: "You are a concise voice assistant for billing questions."
+
+    TtsConfig:
+      type: object
+      description: >
+        **`tts_model_name`** selects the TTS row (catalog code or UUID). Optional **`language`** sets
+        `voice_parameters.language` (e.g. `en`, `hi-IN`). Legacy body key **`tts_provider_id`** is accepted as an alias for
+        `tts_model_name` only (not listed as a second field).
+      properties:
+        tts_model_name:
+          type: string
+          description: TTS catalog code or row UUID (`GET /api/v1/providers/tts`).
+          example: "bulbul:v2"
+        language:
+          type: string
+          description: TTS locale / voice language (stored in `voice_parameters.language`).
+          example: "hi-IN"
+        voice_name:
+          type: string
+          example: "Anushka"
+        voice_parameters:
+          type: object
+          additionalProperties: true
+          example: {"speed": 1.0}
+
+    TranscriberConfig:
+      type: object
+      required: [transcriber_model_name, language]
+      description: >
+        **`transcriber_model_name`** selects the STT row (catalog code or UUID, e.g. `saarika:2.5`).
+        **`language`** is a locale string (e.g. `hi-IN`); a single-element array `["hi-IN"]` is coerced to that string.
+        The pipeline STT model id is derived from the catalog row only — it is not sent in this object.
+        Legacy **`provider_id`** is an alias for `transcriber_model_name`.
+      properties:
+        transcriber_model_name:
+          type: string
+          description: STT catalog code or row UUID (`GET /api/v1/providers/stt`).
+          example: "saarika:2.5"
+        language:
+          type: string
+          description: >
+            STT locale. **Sarvam:** BCP-47 (`hi-IN`, `gu-IN`). **Others:** often short codes (`hi`, `en`). See
+            [Model providers](/assistants/model-providers).
+          example: "hi-IN"
+
+    AgentSpecificConfigInput:
+      type: object
+      description: >
+        Optional behavior overrides (merged onto platform defaults). Omitted keys keep defaults.
+      properties:
+        session_timeout:
+          type: integer
+          minimum: 1
+          maximum: 86400
+          default: 180
+        end_of_speech_timeout:
+          type: number
+          minimum: 0
+          default: 1.5
+        llm_conversation_stop_enabled:
+          type: boolean
+          default: false
+        auto_terminate_call:
+          type: boolean
+          default: false
+        caller_gender_detection_enabled:
+          type: boolean
+          default: true
+        max_output_tokens:
+          type: integer
+          minimum: 1
+          default: 370
+        timezone:
+          type: string
+          default: "Asia/Kolkata"
+        inbound_transfer_call_number:
+          type: string
+          description: Legacy single PSTN target (digits). Prefer `inbound_transfer_routes`.
+        inbound_transfer_trigger_condition:
+          type: string
+          description: Legacy NL condition for the single-number transfer.
+        inbound_transfer_routes:
+          type: array
+          description: Multiple conditional PSTN transfer targets (`transfer_call` with `route_id`).
+          items:
+            type: object
+            properties:
+              route_id:
+                type: string
+                description: Stable id for `transfer_call` (optional; auto if omitted).
+              display_name:
+                type: string
+              enabled:
+                type: boolean
+                default: true
+              condition_when_to_transfer:
+                type: string
+                description: When the model should offer this transfer.
+              phone_number:
+                type: string
+
+    VadConfig:
+      type: object
+      required: [vad_provider_id]
+      properties:
+        vad_provider_id:
+          type: string
+          description: >
+            Internal VAD provider row UUID (dashboard / advanced update flows). Not part of
+            `POST /api/v1/agents/simple` — default create uses platform VAD defaults.
+          example: "00000000-0000-0000-0000-000000000000"
+        threshold:
+          type: number
+          example: 0.5
+        min_speech_duration_ms:
+          type: number
+          example: 250
+        min_silence_duration_ms:
+          type: number
+          example: 500
+        max_allowed_silence_duration:
+          type: number
+          example: 0
+        sampling_rate:
+          type: number
+          example: 16000
+
+    CreateAgentResponse:
+      type: object
+      description: Complete agent response (abridged).
+      properties:
+        agent:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+              description: Use as **agent_id** everywhere.
+            name: {type: string}
+            user_id: {type: string, format: uuid}
+            is_active: {type: boolean}
+        configurations:
+          type: object
+        validation_status:
+          type: string
+          example: "valid"
+
+    SimpleCreateAgentRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    CreateMappingRequest:
+      type: object
+      required: [agent_id, upload_file_id]
+      properties:
+        agent_id:
+          type: string
+          format: uuid
+        upload_file_id:
+          type: string
+          format: uuid
+
+    SemanticSearchBody:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+        limit:
+          type: integer
+          default: 10
+        similarity_threshold:
+          type: number
+          default: 0.5
+
+    HybridSearchBody:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+        limit:
+          type: integer
+          default: 5
+        keyword_weight:
+          type: number
+          default: 0.4
+        semantic_weight:
+          type: number
+          default: 0.6
+        similarity_threshold:
+          type: number
+          default: 0.85
+
+    CallCompletedPayload:
+      type: object
+      description: >
+        Example payload Kupe can POST to your URL when you model it in post-analysis
+        / HTTP tool schema.
+        Shape is **defined by your tool**; this object lists common fields clients
+        ask for.
+      properties:
+        call_id:
+          type: string
+          description: Often the carrier call id or an internal session id.
+        call_duration:
+          type: number
+          description: Seconds.
+        extracted_variables:
+          type: object
+          additionalProperties: true
+        call_status:
+          type: string
+          example: "completed"
+        summary:
+          type: string
+        full_conversation:
+          type: string
+          description: Full transcript text.
+        recording_url:
+          type: string
+          format: uri
+        from_number:
+          type: string
+        to_number:
+          type: string
+        cost:
+          type: number
+        sentiment_analysis:
+          type: object
+          additionalProperties: true
+
+    CallErrorPayload:
+      type: object
+      properties:
+        call_id:
+          type: string
+        error_reason:
+          type: string
+          example: "Invalid destination number"
+
+    KupeSuccessResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        data:
+          description: Payload or null
+          nullable: true
+
+    RagSearchResponseBody:
+      type: object
+      description: >
+        Returned by `POST /api/v1/search/semantic` and `POST /api/v1/search/hybrid`.
+        `data` is chunk text strings. `scores`: **semantic** returns a parallel list
+        of numeric distances;
+        **hybrid** returns objects `{ combined_score, distance, sparse_score }` per
+        chunk.
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            type: string
+          description: Matching chunk texts
+        scores:
+          type: array
+          description: Parallel to `data` — numbers (semantic) or score objects 
+            (hybrid).
+          items: {}
+
+    ModelProviderRowExample:
+      type: object
+      description: Example row shape from `model_providers` (fields vary by 
+        deployment).
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_name:
+          type: string
+        model_name:
+          type: string
+        is_large_model:
+          type: boolean
+        default_temperature:
+          type: number
+        api_base:
+          type: string
+        is_default:
+          type: boolean
+
+    ArbitraryJson:
+      type: object
+      additionalProperties: true
+      description: >
+        Deployment-specific JSON (call sessions, billing views, tool defs).
+        See prose on each operation and the **Platform REST APIs** guide page.
+
+paths:
+  /health:
+    get:
+      tags: [Service]
+      summary: Health check (no API key)
+      description: |
+        **Full URL:** `GET https://api.kupe.in/health`
+
+        Public readiness probe. Use **Try it** to confirm connectivity before calling
+        authenticated routes.
+
+        **Reference shape (illustrative)** — fields match production; `timestamp` is a Unix float from the server.
+
+        ```json
+        {
+          "status": "healthy",
+          "timestamp": 1776969467.659134,
+          "service": "milli-ai-backend",
+          "database": "connected",
+          "version": "1.0.0"
+        }
+        ```
+      operationId: healthCheck
+      security: []
+      responses:
+        "200":
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/me:
+    get:
+      tags: ["Current user"]
+      summary: Me
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/me`
+
+        Returns the authenticated **user id** (`user_id`), **email**, optional **phone**, and **profile_image_url**
+        when the Supabase Auth user has avatar fields in `user_metadata` or OAuth **identities** (`picture`, etc.).
+
+        **Auth:** send **`x-api-key`** (integration) **or** **`Authorization: Bearer`** with the Supabase JWT (dashboard session).
+        With an API key, the server resolves your **owner user id** and enriches profile fields via the Auth admin API.
+      operationId: getCurrentUser
+      security:
+        - KupeApiKey: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          description: Missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden (RBAC or scopes)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+  /api/v1/me/users:
+    get:
+      tags: ["Current user"]
+      summary: List users
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/me/users`
+
+        Returns accessible user ids with profile details for enterprise-enabled access.
+        For non-eligible access levels, returns an empty list with a short message.
+      operationId: listCurrentScopeUsers
+      security:
+        - KupeApiKey: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: User list response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+  /api/v1/agents:
+    get:
+      tags: ["Agent Management"]
+      summary: List agents
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/agents` (optional query `?page=1&page_size=20&scope=all&q=…`)
+
+        Returns agents for the authenticated user. Super-admins may use `scope`, `page`, `page_size`, and filters.
+        Non–super-admin responses are typically a JSON array of agent summaries.
+      operationId: listAgents
+      parameters:
+        - name: page
+          in: query
+          schema: {type: integer, minimum: 1, default: 1}
+        - name: page_size
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+        - name: scope
+          in: query
+          schema: {type: string, enum: [mine, all]}
+        - name: q
+          in: query
+          description: Search agent name (super-admin list mode).
+          schema: {type: string}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden (RBAC or feature disabled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+  /api/v1/agents/simple:
+    post:
+      tags: ["Agent Management"]
+      summary: Create agent (defaults)
+      description: |
+        **Full URL:** `POST https://api.kupe.in/api/v1/agents/simple`
+
+        Creates an agent with default STT/LLM/TTS/VAD for the user.
+      operationId: createAgentSimple
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimpleCreateAgentRequest"
+            example:
+              name: "Quickstart Agent"
+              description: "Uses platform defaults"
+      responses:
+        "201":
+          description: Created — returns `CreateAgentResponse` (`agent.id` is **agent_id**)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAgentResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "401":
+          description: Missing API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/agents/{agent_id}:
+    parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: ["Agent Management"]
+      summary: Get agent by ID
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/agents/{agent_id}`"
+      operationId: getAgentById
+      responses:
+        "200":
+          description: Full agent + configurations (`CompleteAgentResponse`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAgentResponse"
+        "400":
+          description: Invalid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Not allowed to access this agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+    put:
+      tags: ["Agent Management"]
+      summary: Update agent
+      description: |
+        **Full URL:** `PUT https://api.kupe.in/api/v1/agents/{agent_id}` (optional `?force_update=true`)
+
+        Send partial `AgentUpdateRequest` fields. Active agents may require `force_update=true` query on dashboard flows.
+      operationId: updateAgent
+      parameters:
+        - name: force_update
+          in: query
+          schema: {type: boolean, default: false}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentRequest"
+            example:
+              agent:
+                name: "Renamed Agent"
+              agent_model_config:
+                model_name: "gpt-4.1-mini"
+                system_prompt: "Updated prompt."
+      responses:
+        "200":
+          description: Updated agent returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAgentResponse"
+        "400":
+          description: Invalid state (e.g. active agent without force)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+    delete:
+      tags: ["Agent Management"]
+      summary: Delete agent
+      description: |
+        **Full URL:** `DELETE https://api.kupe.in/api/v1/agents/{agent_id}` (optional `?force_delete=true`)
+
+        Deletes agent and configs; inactive-only unless `force_delete=true`.
+      operationId: deleteAgent
+      parameters:
+        - name: force_delete
+          in: query
+          schema: {type: boolean, default: false}
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KupeSuccessResponse"
+        "400":
+          description: Cannot delete active agent without force
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/providers/model:
+    get:
+      tags: [Providers]
+      summary: List LLM providers
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/providers/model`"
+      operationId: listLlmProviders
+      responses:
+        "200":
+          description: Array of model provider rows (`id`, `provider_name`, 
+            `model_name`, …).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {type: object, additionalProperties: true}
+        "401":
+          description: Invalid or missing API key (when auth is enforced for 
+            this path).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: RBAC — deploy latest `rbac_paths.json` + middleware if 
+            you see this for valid keys.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/providers/tts:
+    get:
+      tags: [Providers]
+      summary: List TTS providers
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/providers/tts`"
+      operationId: listTtsProviders
+      responses:
+        "200":
+          description: Array of TTS provider rows.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {type: object, additionalProperties: true}
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/providers/stt:
+    get:
+      tags: [Providers]
+      summary: List STT providers
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/providers/stt`"
+      operationId: listSttProviders
+      responses:
+        "200":
+          description: Array of STT / transcriber provider rows.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {type: object, additionalProperties: true}
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/providers/all:
+    get:
+      tags: [Providers]
+      summary: List all provider tables
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/providers/all`"
+      operationId: listAllProviders
+      responses:
+        "200":
+          description: Object with `model_providers`, `tts_providers`, `stt_providers`,
+            and optionally `vad_providers` (internal; agent create does not require VAD in the request body).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/tts-voices:
+    get:
+      tags: [Providers]
+      summary: List TTS voice catalog rows
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/tts-voices`
+
+        Voices used with `tts_config.voice_name` for a given TTS provider.
+      operationId: listTtsVoices
+      responses:
+        "200":
+          description: Array of configured TTS voice rows.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {type: object, additionalProperties: true}
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+  /api/v1/phone:
+    get:
+      tags: ["Phone numbers"]
+      summary: Get all phone numbers
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/phone`
+
+        Returns **`success`** and **`phone_numbers`**: every provisioned line (UUID **`id`**, **`phone_number`**, optional
+        **`friendly_name`**, **`country_code`**, **`region`**, **`is_active`**, **`created_at`**). Use each **`id`**
+        as **`phone_number_id`** when attaching agents or workflows (`POST /api/v1/phone/mapping`) or when starting
+        outbound calls. Numbers are typically stored in **E.164** where possible.
+      operationId: listAllPhoneNumbers
+      security:
+        - KupeApiKey: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, phone_numbers]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  phone_numbers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        phone_number:
+                          type: string
+                        friendly_name:
+                          type: string
+                          nullable: true
+                        country_code:
+                          type: string
+                          nullable: true
+                        region:
+                          type: string
+                          nullable: true
+                        is_active:
+                          type: boolean
+                        created_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+  /api/v1/phone/mapping:
+    post:
+      tags: ["Incoming calls"]
+      summary: Map agent or workflow to a phone line
+      description: |
+        **Full URL:** `POST https://api.kupe.in/api/v1/phone/mapping`
+
+        Attaches an **agent** (or **workflow**) to a **phone_numbers** row so inbound PSTN on that line
+        reaches the correct assistant. Phone numbers should be provisioned in **E.164** where possible
+        (e.g. **+91**xxxxxxxxxx for India, **+1**xxxxxxxxxx for the US).
+
+        Send exactly one of **`agent_id`** or **`workflow_id`**.
+
+        **Authentication:** Use **`x-api-key`** or **Bearer** JWT. **`webhook_url`**, **`config_source`**, and
+        **`user_id`** are optional; when omitted they are set by the server from deployment config and the
+        authenticated principal (see schema **`AgentPhoneMappingRequest`**).
+
+        **Response payload:** `webhook_url` and `config_source` are internal implementation details and are not
+        returned by this endpoint.
+      operationId: createAgentPhoneMapping
+      security:
+        - KupeApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentPhoneMappingRequest"
+            example:
+              agent_id: "00000000-0000-0000-0000-000000000001"
+              phone_number_id: "00000000-0000-0000-0000-000000000002"
+      responses:
+        "200":
+          description: Mapping created
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          description: Validation error (missing ids, both agent and workflow, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/call/create_call:
+    post:
+      tags: ["Outbound calls"]
+      summary: Initiate outbound call
+      description: |
+        **Full URL (query string, not JSON body):**  
+        `POST https://api.kupe.in/api/call/create_call?phoneNumber=%2B15551234567&agent_id={uuid}`
+
+        Places an outbound PSTN call. **Query parameters** (not JSON body): `phoneNumber`, optional `user_id`,
+        optional `agent_id`, `workflow_id`, `phone_number_id`. Optional `Origin` header must pass allow-list if present.
+
+        **Identity resolution:** when `user_id` is omitted, backend resolves it from authenticated identity (`x-api-key`
+        or `Authorization: Bearer <token>`). If neither `user_id` nor valid auth is provided, request returns `401`.
+
+        **Destination numbers:** use **E.164** with country code — e.g. **+91** for India, **+1** for the United States
+        (URL-encode the `+` as `%2B` in curl).
+
+        **Outbound line:** when `phone_number_id` is set (or can be inferred from the agent/workflow mapping), Kupe uses
+        that row’s telephony backend. When no row is resolved, a legacy fallback may use the first available line for the user.
+
+        **Response `call_sid`:** use as your **`call_id`** when present; billing may also track internal session ids.
+      operationId: createOutboundCall
+      security: []
+      parameters:
+        - name: phoneNumber
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "+15551234567"
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: agent_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: workflow_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: phone_number_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Call queued / initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                description: Success payload; fields vary by telephony backend (`call_sid` when returned).
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                  provider:
+                    type: string
+                    description: Internal backend key for this dial.
+                  call_sid:
+                    type: string
+                    description: External call identifier when available — use as call_id.
+                  from_phone_number:
+                    type: string
+                  user_id:
+                    type: string
+                    format: uuid
+        "402":
+          description: Billing / credits — user cannot start metered usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Invalid Origin header (when `Origin` is sent and fails 
+            validation)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "401":
+          description: Missing/invalid authentication when `user_id` is omitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Telephony configuration error (e.g. no from-number for 
+            user) or provider failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+  /api/v1/files/upload:
+    post:
+      tags: ["Knowledge base"]
+      summary: Upload knowledge file
+      description: |
+        **Full URL:** `POST https://api.kupe.in/api/v1/files/upload` (`multipart/form-data`)
+
+        Multipart upload; chunks to vector DB and optional `agent_id` tagging. Response is `SuccessResponse` (`message`, `data`).
+      operationId: uploadKnowledgeFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                user_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Optional legacy override. Omit in normal usage; backend uses authenticated user.
+                agent_id:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: File processed — `data` is the upload row (`id`, 
+            `original_filename`, `storage_file_id`, …).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KupeSuccessResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden (RBAC)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Processing failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/files/supported-formats:
+    get:
+      tags: ["Knowledge base"]
+      summary: Supported upload formats
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/files/supported-formats`"
+      operationId: listSupportedUploadFormats
+      responses:
+        "200":
+          description: MIME types and extensions in `data`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KupeSuccessResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/files/user/me:
+    get:
+      tags: ["Knowledge base"]
+      summary: List files for authenticated user
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/files/user/me`
+
+        Uses **Bearer** or **`x-api-key`** context; clients do not pass `user_id`.
+      operationId: listAuthenticatedUserFiles
+      responses:
+        "200":
+          description: SuccessResponse — `data.files` is the list of file 
+            payloads.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KupeSuccessResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Failed to list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/files/{file_id}:
+    get:
+      tags: ["Knowledge base"]
+      summary: Get file metadata
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/files/{file_id}`
+
+        Returns upload metadata plus signed `view_url` / `download_url` when available.
+      operationId: getFileById
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: SuccessResponse — `data` includes file fields plus 
+            optional signed URLs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KupeSuccessResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "404":
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Metadata error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+    delete:
+      tags: ["Knowledge base"]
+      summary: Delete file
+      description: "**Full URL:** `DELETE https://api.kupe.in/api/v1/files/{file_id}`"
+      operationId: deleteFile
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Deleted from storage + vector DB + mappings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KupeSuccessResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "404":
+          description: Not found or could not fully delete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/agent-files-mappings/create:
+    post:
+      tags: ["Knowledge base"]
+      summary: Attach file to agent
+      description: "**Full URL:** `POST https://api.kupe.in/api/v1/agent-files-mappings/create`"
+      operationId: attachFileToAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMappingRequest"
+      responses:
+        "200":
+          description: Mapping created — `data` is the mapping row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KupeSuccessResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Failed to create mapping
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/agent-files-mappings/agent/{agent_id}:
+    get:
+      tags: ["Knowledge base"]
+      summary: List files attached to agent
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/agent-files-mappings/agent/{agent_id}`"
+      operationId: listAgentFiles
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: SuccessResponse — `data` is an array of mapping dicts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KupeSuccessResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Failed to retrieve mappings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/agent-files-mappings/agent/{agent_id}/file/{upload_file_id}:
+    delete:
+      tags: ["Knowledge base"]
+      summary: Detach file from agent
+      description: "**Full URL:** `DELETE https://api.kupe.in/api/v1/agent-files-mappings/agent/{agent_id}/file/{upload_file_id}`"
+      operationId: detachFileFromAgent
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: upload_file_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Mapping removed from agent (vector chunk metadata updated
+            server-side).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KupeSuccessResponse"
+        "404":
+          description: Mapping not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/search/semantic:
+    post:
+      tags: ["Knowledge base"]
+      summary: Semantic search (RAG)
+      description: |
+        **Full URL:** `POST https://api.kupe.in/api/v1/search/semantic?agent_id={uuid}`
+
+        Vector search scoped to `agent_id` chunk metadata.
+
+        **Auth:** excluded from `x-api-key` in the backend (same as `create_call`) — secure at the edge if exposed publicly.
+      operationId: semanticSearch
+      security: []
+      parameters:
+        - name: agent_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SemanticSearchBody"
+            example:
+              query: "refund policy"
+              limit: 8
+              similarity_threshold: 0.55
+      responses:
+        "200":
+          description: Chunk texts + numeric scores (cosine distance; lower = 
+            more similar when returned).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RagSearchResponseBody"
+        "400":
+          description: Missing `agent_id` or empty query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Vector DB or internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+  /api/v1/search/hybrid:
+    post:
+      tags: ["Knowledge base"]
+      summary: Hybrid search (RAG)
+      description: |
+        **Full URL:** `POST https://api.kupe.in/api/v1/search/hybrid?agent_id={uuid}`
+
+        Hybrid keyword + vector search. When the vector backend does not expose sparse/BM25 on this path,
+        Kupe returns semantic-only results with **per-item score objects** (not raw floats).
+
+        **Auth:** excluded from `x-api-key` in the backend — secure at the edge if exposed publicly.
+      operationId: hybridSearch
+      security: []
+      parameters:
+        - name: agent_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HybridSearchBody"
+            example:
+              query: "cancellation fee"
+              limit: 10
+              keyword_weight: 0.4
+              semantic_weight: 0.6
+              similarity_threshold: 0.85
+      responses:
+        "200":
+          description: Chunk texts + hybrid score objects (semantic fallback 
+            path).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RagSearchResponseBody"
+        "400":
+          description: Missing `agent_id` or empty query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/call-analytics:
+    get:
+      tags: ["Call logs"]
+      summary: List or fetch call sessions (call logs)
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/call-analytics`
+
+        - **`request_id`**: one session by internal request id (404 if not found).
+        - **`page` + `page_size`**: paginated `{ items, total, page, page_size }`.
+        - **Neither**: full list (subject to `call_analytics` / `call_logs` feature flags).
+
+        Query **`filter`**: search request id or call type. Super-admins may pass `scope`, `organization_ids`,
+        `owner_user_ids`, `platform_roles`, etc., per backend support.
+
+        Session JSON may include **`post_call_analysis_results`** and related fields when not HIPAA-redacted.
+      operationId: getCallAnalytics
+      parameters:
+        - name: request_id
+          in: query
+          schema: { type: string }
+          description: When set, return exactly one session.
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - name: filter
+          in: query
+          schema: { type: string }
+          description: Search request_id or call type (alias for backend `search_filter`).
+        - name: scope
+          in: query
+          schema: { type: string }
+        - name: organization_ids
+          in: query
+          schema: { type: string }
+        - name: owner_user_ids
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: One session, paginated wrapper, or array — see backend behavior.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Feature disabled or forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "404":
+          description: Session not found (when `request_id` set)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/call-analytics/export:
+    get:
+      tags: ["Call logs"]
+      summary: Export call logs (ZIP)
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/call-analytics/export`
+
+        With **`request_id`**: downloadable ZIP for one call. Bulk export uses `start_date` / `end_date` (YYYY-MM-DD)
+        and may email the ZIP when configured.
+      operationId: exportCallAnalytics
+      parameters:
+        - name: request_id
+          in: query
+          schema: { type: string }
+        - name: start_date
+          in: query
+          schema: { type: string, format: date }
+        - name: end_date
+          in: query
+          schema: { type: string, format: date }
+        - name: include_recordings
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: ZIP stream or accepted for email delivery
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Bad request (e.g. missing email for bulk)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/billing/usage-records:
+    get:
+      tags: ["Billing and usage"]
+      summary: Usage records organized by call sessions
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/billing/usage-records` — credits/services per session."
+      operationId: getBillingUsageRecords
+      responses:
+        "200":
+          description: Usage DTO (structured)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/billing/usage/records:
+    get:
+      tags: ["Billing and usage"]
+      summary: Service usage rows grouped by session
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/billing/usage/records`
+
+        Query: `time_filter`, `usage_type` (calls, chat, embedding), `search`, `limit`, `offset`, or `page` + `page_size`.
+        Super-admin scoping via `scope`, `organization_ids`, `owner_user_ids`, etc.
+      operationId: getBillingUsageRecordsGrouped
+      parameters:
+        - name: time_filter
+          in: query
+          schema: { type: string, default: all }
+        - name: usage_type
+          in: query
+          schema: { type: string }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: page_size
+          in: query
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: >
+            Paginated wrapper with grouped_sessions and total (see backend JSON).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/billing/usage/summary:
+    get:
+      tags: ["Billing and usage"]
+      summary: Aggregated usage summary (charts)
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/billing/usage/summary`
+
+        Query `time_period`: `day`, `week`, `month`, `4months`, `year`, `all` (see backend).
+      operationId: getBillingUsageSummary
+      parameters:
+        - name: time_period
+          in: query
+          schema: { type: string, default: all }
+        - name: scope
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Aggregated buckets + totals (USD)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/billing/usage/overview:
+    get:
+      tags: ["Billing and usage"]
+      summary: Usage overview totals
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/billing/usage/overview`
+
+        Returns total and this-month usage duration and cost for the current access scope.
+        Optional query `user_id` narrows the result to one accessible user.
+      operationId: getBillingUsageOverview
+      parameters:
+        - name: user_id
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Totals and this-month usage (duration and cost)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/billing/credit-balance:
+    get:
+      tags: ["Billing and usage"]
+      summary: Current credit balance summary
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/billing/credit-balance`"
+      operationId: getBillingCreditBalance
+      responses:
+        "200":
+          description: Balance summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/billing/balance-history:
+    get:
+      tags: ["Billing and usage"]
+      summary: Balance history
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/billing/balance-history`"
+      operationId: getBillingBalanceHistory
+      responses:
+        "200":
+          description: History rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/billing/usage/sessions/{session_id}:
+    get:
+      tags: ["Billing and usage"]
+      summary: Usage and cost for one call session
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/billing/usage/sessions/{session_id}`"
+      operationId: getBillingSessionUsage
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Session usage DTO
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "404":
+          description: Session not found or access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/billing/usage/export:
+    get:
+      tags: ["Billing and usage"]
+      summary: Export usage (email CSV)
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/billing/usage/export`
+
+        Queues or sends a CSV of grouped usage (same filters as `/usage/records`). Requires an email on the account.
+        Query: `time_filter`, `usage_type`, `session_types`, `agent_ids`, `from_date`, `to_date` (YYYY-MM-DD).
+      operationId: exportBillingUsage
+      parameters:
+        - name: time_filter
+          in: query
+          schema: { type: string, default: all }
+        - name: usage_type
+          in: query
+          schema: { type: string }
+        - name: session_types
+          in: query
+          schema: { type: string }
+        - name: agent_ids
+          in: query
+          schema: { type: string }
+        - name: from_date
+          in: query
+          schema: { type: string, format: date }
+        - name: to_date
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Export accepted / email queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "400":
+          description: Missing email or bad parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/post-analysis/rules:
+    get:
+      tags: ["Post-call analysis"]
+      summary: List post-call analysis rules
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/post-analysis/rules`"
+      operationId: listPostAnalysisRules
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+    post:
+      tags: ["Post-call analysis"]
+      summary: Create post-call analysis rule
+      description: "**Full URL:** `POST https://api.kupe.in/api/v1/post-analysis/rules` — JSON body per backend."
+      operationId: createPostAnalysisRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArbitraryJson"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/post-analysis/rules/{rule_id}:
+    get:
+      tags: ["Post-call analysis"]
+      summary: Get one rule
+      operationId: getPostAnalysisRule
+      parameters:
+        - name: rule_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+    put:
+      tags: ["Post-call analysis"]
+      summary: Update rule
+      operationId: updatePostAnalysisRule
+      parameters:
+        - name: rule_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArbitraryJson"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+    delete:
+      tags: ["Post-call analysis"]
+      summary: Delete rule
+      operationId: deletePostAnalysisRule
+      parameters:
+        - name: rule_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+
+  /api/v1/post-analysis/rules/{rule_id}/duplicate:
+    post:
+      tags: ["Post-call analysis"]
+      summary: Duplicate rule
+      operationId: duplicatePostAnalysisRule
+      parameters:
+        - name: rule_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+
+  /api/v1/agents/{agent_id}/post-analysis:
+    parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: ["Post-call analysis", "Agent Management"]
+      summary: Get post-call analysis config for agent
+      operationId: getAgentPostAnalysis
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ArbitraryJson"
+    post:
+      tags: ["Post-call analysis", "Agent Management"]
+      summary: Upsert post-call analysis for agent
+      description: Body must include fields aligned with backend `PostCallAnalysis` upsert; `agent_id` should match path.
+      operationId: upsertAgentPostAnalysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArbitraryJson"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+
+  /api/v1/agents/{agent_id}/post-analysis/attached-rules:
+    parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: ["Post-call analysis", "Agent Management"]
+      summary: List rules attached to agent
+      operationId: getAgentAttachedPostAnalysisRules
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ArbitraryJson"
+    put:
+      tags: ["Post-call analysis", "Agent Management"]
+      summary: Set attached rule IDs for agent
+      description: 'Body: `{ "rule_ids": ["uuid", ...] }`'
+      operationId: setAgentAttachedPostAnalysisRules
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rule_ids:
+                  type: array
+                  items: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+
+  /api/v1/agents/{agent_id}/post-analysis/attached-rule-ids:
+    get:
+      tags: ["Post-call analysis", "Agent Management"]
+      summary: List attached rule IDs only
+      operationId: getAgentAttachedPostAnalysisRuleIds
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string, format: uuid }
+
+  /api/v1/tool-endpoint-defs:
+    get:
+      tags: ["Tools and MCP"]
+      summary: List HTTP tool endpoint definitions
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/tool-endpoint-defs`"
+      operationId: listToolEndpointDefs
+      responses:
+        "200":
+          description: List response with tools array
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+    post:
+      tags: ["Tools and MCP"]
+      summary: Create HTTP tool endpoint definition
+      description: "**Full URL:** `POST https://api.kupe.in/api/v1/tool-endpoint-defs` — body matches dashboard/API schemas (name, url, tool_schema, …)."
+      operationId: createToolEndpointDef
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArbitraryJson"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/tool-endpoint-defs/{tool_id}:
+    get:
+      tags: ["Tools and MCP"]
+      summary: Get HTTP tool definition by id
+      operationId: getToolEndpointDef
+      parameters:
+        - name: tool_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+    put:
+      tags: ["Tools and MCP"]
+      summary: Update HTTP tool definition
+      operationId: updateToolEndpointDef
+      parameters:
+        - name: tool_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArbitraryJson"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+    delete:
+      tags: ["Tools and MCP"]
+      summary: Delete HTTP tool definition
+      operationId: deleteToolEndpointDef
+      parameters:
+        - name: tool_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+
+  /api/v1/tools-mcp-server-defs:
+    get:
+      tags: ["Tools and MCP"]
+      summary: List MCP server tool definitions
+      operationId: listMcpServerToolDefs
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+    post:
+      tags: ["Tools and MCP"]
+      summary: Create MCP server tool definition
+      operationId: createMcpServerToolDef
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArbitraryJson"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+
+  /api/v1/tools-mcp-server-defs/{tool_id}:
+    get:
+      tags: ["Tools and MCP"]
+      summary: Get MCP server tool definition by id
+      operationId: getMcpServerToolDef
+      parameters:
+        - name: tool_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+    put:
+      tags: ["Tools and MCP"]
+      summary: Update MCP server tool definition
+      operationId: updateMcpServerToolDef
+      parameters:
+        - name: tool_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArbitraryJson"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+    delete:
+      tags: ["Tools and MCP"]
+      summary: Delete MCP server tool definition
+      operationId: deleteMcpServerToolDef
+      parameters:
+        - name: tool_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+
+  /api/v1/agents/{agent_id}/tools:
+    get:
+      tags: ["Tools and MCP", "Agent Management"]
+      summary: List tools attached to an agent
+      operationId: getAgentTools
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Array of tool mapping objects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ArbitraryJson"
+    post:
+      tags: ["Tools and MCP", "Agent Management"]
+      summary: Add tools to an agent
+      operationId: addAgentTools
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/ArbitraryJson"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+    patch:
+      tags: ["Tools and MCP", "Agent Management"]
+      summary: Replace agent tools configuration
+      operationId: patchAgentTools
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: force_update
+          in: query
+          schema: { type: boolean, default: false }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/ArbitraryJson"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+
+  /api/v1/agents/{agent_id}/tools/{tool_id}:
+    delete:
+      tags: ["Tools and MCP", "Agent Management"]
+      summary: Remove one tool from an agent
+      operationId: deleteAgentTool
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: tool_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+
+  /api/v1/api-keys:
+    post:
+      tags: ["API keys"]
+      summary: Create API key
+      description: |
+        **Full URL:** `POST https://api.kupe.in/api/v1/api-keys`
+
+        Body: `{ "user_id": "<optional-uuid>", "name": "optional label" }`.
+        The API key value is generated by the server.
+        Response: `{ "message", "api_key": { ... } }`.
+      operationId: createApiKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id: { type: string, format: uuid, nullable: true }
+                provider_name: { type: string, default: "milli_chat_ai" }
+                name: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+
+  /api/v1/api-keys/fetch:
+    get:
+      tags: ["API keys"]
+      summary: List active API keys
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/api-keys/fetch`
+
+        Optional query `user_id` lets eligible org-level access list another user's keys.
+        Without `user_id`, keys are listed for the authenticated user.
+      operationId: listApiKeys
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid, nullable: true }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ArbitraryJson"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/api-keys/{key_id}:
+    patch:
+      tags: ["API keys"]
+      summary: Update API key display name
+      description: |
+        **Full URL:** `PATCH https://api.kupe.in/api/v1/api-keys/{key_id}`
+
+        Optional query `user_id` can be passed for scoped management flows.
+      operationId: patchApiKeyLabel
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: user_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid, nullable: true }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, description: "Empty string clears the label" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+    delete:
+      tags: ["API keys"]
+      summary: Revoke API key
+      description: |
+        **Full URL:** `DELETE https://api.kupe.in/api/v1/api-keys/{key_id}`
+
+        Optional query `user_id` can be passed for scoped management flows.
+      operationId: revokeApiKey
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: user_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid, nullable: true }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+
+webhooks:
+  voiceCallCompleted:
+    post:
+      security: []
+      tags: [Webhooks]
+      summary: Call completed (your HTTPS endpoint)
+      description: >
+        **Inbound to your server.** Configure via agent **Post analysis** → HTTP integration
+        / structured output.
+        Map fields in your tool schema so Kupe’s POST matches this example.
+      operationId: webhookCallCompleted
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CallCompletedPayload"
+            example:
+              call_id: "CAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              call_duration: 132.4
+              extracted_variables:
+                intent: "billing"
+                account_last4: "4242"
+              call_status: "completed"
+              summary: "User asked about invoice; agent explained charges."
+              full_conversation: "Agent: Hi…\nUser: …"
+              recording_url: "https://example.com/recording.mp3"
+              from_number: "+15550001111"
+              to_number: "+15550002222"
+              cost: 0.12
+              sentiment_analysis:
+                label: "positive"
+                score: 0.81
+      responses:
+        "200":
+          description: Acknowledge receipt (your server should return quickly). 
+            Your endpoint may return any 2xx; non-2xx may be retried or logged 
+            depending on Kupe integration settings.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  voiceCallError:
+    post:
+      security: []
+      tags: [Webhooks]
+      summary: Call / analysis error (your HTTPS endpoint)
+      description: Model failures or tool HTTP failures you surface from 
+        post-analysis pipelines.
+      operationId: webhookCallError
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CallErrorPayload"
+            example:
+              call_id: "CAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              error_reason: "Analysis HTTP tool returned 500"
+      responses:
+        "200":
+          description: Acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
