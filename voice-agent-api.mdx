@@ -140,23 +140,22 @@ Use these lists to populate UI or to resolve **codes** vs **UUIDs** for agent cr
 
 `POST /api/call/create_call`
 
-This route is **not** under `/api/v1`. You can pass `user_id` directly, or omit it and let backend resolve from `x-api-key` or `Authorization: Bearer <token>`.
+This route is **not** under `/api/v1`. **Authenticate every request** with **`x-api-key`** (best for integrations and cron jobs) **or** **`Authorization: Bearer`** plus your Supabase session JWT (same token the Kupe web app uses). The **API key owner** or **Bearer user** is always who is billed and whose `phone_numbers` / mappings are used — there is **no** `user_id` query parameter.
 
 | Query parameter | Required | Description |
 |-----------------|----------|-------------|
-| `phoneNumber` | Yes | Destination — use **E.164** with country code (e.g. **+91**… India, **+1**… US/Canada); normalized server-side |
-| `user_id` | No | Owner user UUID. If omitted, backend resolves from API key / Bearer token |
+| `phoneNumber` | Yes | Destination — use **E.164** with country code (e.g. **+91**… India, **+1**… US/Canada); URL-encode `+` as `%2B` in curl |
 | `agent_id` | No* | Agent to run (*recommended for voice agents) |
 | `workflow_id` | No | Alternative to `agent_id` |
-| `phone_number_id` | No | Specific outbound line from `phone_numbers` |
+| `phone_number_id` | No | Specific outbound line from `phone_numbers` (must belong to the authenticated user) |
 
-When a **`phone_numbers`** row is resolved (explicit id or via mapping), Kupe uses that row’s **configured telephony backend** for the dial. If no row is found, a **fallback** path may use the first available line for the user (deployment-dependent).
+When a **`phone_numbers`** row is resolved (explicit id or via mapping), Kupe uses that row’s **configured telephony backend** (Twilio, Elison, or Exotel). If no row is found, a **fallback** may use the first available active line for that user.
 
 Optional header `Origin`: if present, must pass Kupe’s allow-list (`validate_origin`). Omit `Origin` for server-to-server curl.
 
 **Examples**
 
-US/Canada-style destination:
+US/Canada — **API key**:
 
 ```bash
 curl -sS -X POST \
@@ -164,7 +163,7 @@ curl -sS -X POST \
   'https://api.kupe.in/api/call/create_call?phoneNumber=%2B15551234567&agent_id=<AGENT_UUID>'
 ```
 
-India-style destination (URL-encoded `+`):
+India — **Bearer** session:
 
 ```bash
 curl -sS -X POST \
@@ -177,22 +176,24 @@ curl -sS -X POST \
 ```json
 {
   "status": "success",
-  "message": "Call initiated successfully using user-specific credentials",
-  "provider": "<internal>",
-  "call_sid": "<external-call-id>",
+  "request_id": "<UUID>",
+  "call_session_id": "<UUID>",
+  "user_id": "<SUBJECT_USER_UUID>",
+  "telephony_provider": "pstn",
+  "target_number": "+15551234567",
   "from_phone_number": "+1xxxxxxxxxx",
-  "user_id": "<USER_UUID>"
+  "telephony_leg_id": "<opaque-leg-id>"
 }
 ```
 
-Treat **`call_sid`** as the unique call identifier when the field is returned (`call_id` in your own logs). Billing and analytics may also use internal session IDs.
+Use **`call_session_id`** as the primary Kupe session id; use **`request_id`** to correlate logs and `GET /api/v1/call-analytics?request_id=…`. **`telephony_leg_id`** is an opaque carrier leg id when present. Initiation errors may return HTTP **200** with `"status": "failed"` and the same ids for tracing.
 
 **Failure cases**
 
-- `402` — billing / credits
-- `401` — `user_id` missing and no valid `x-api-key` / Bearer token
+- `402` — billing / credits (subject user)
+- `401` — missing or invalid `x-api-key` / Bearer
 - `403` — invalid `Origin`
-- `500` — no configured from-number, telephony error, etc.
+- `500` — server/telephony configuration error
 
 ---
 
