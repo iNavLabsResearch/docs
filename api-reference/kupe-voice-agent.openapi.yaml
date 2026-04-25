@@ -31,7 +31,10 @@ info:
     | `POST /api/v1/search/hybrid` | `https://api.kupe.in/api/v1/search/hybrid` |
     | `GET /api/v1/call-analytics` | `https://api.kupe.in/api/v1/call-analytics` (list / `page`+`page_size` / `?request_id=` one session) |
     | `GET /api/v1/call-analytics/export` | Export call logs (ZIP); query `request_id` or date range |
-    | `GET /api/v1/billing/credit-balance` | `https://api.kupe.in/api/v1/billing/credit-balance` |
+    | `GET /api/v1/billing/credit-balance` | `https://api.kupe.in/api/v1/billing/credit-balance` (summary; wallet-backed) |
+    | `GET /api/v1/wallets/me` | `https://api.kupe.in/api/v1/wallets/me` (full wallet summary for the authenticated user) |
+    | `GET /api/v1/wallets/{wallet_id}` | Wallet detail: grants + ledger (RBAC) |
+    | `GET /api/v1/earnings/me` | Reseller org earnings summary (`period` query) |
     | `GET /api/v1/billing/usage/records` | Usage grouped by session (cost, duration, agent) |
     | `GET /api/v1/billing/usage/export` | Export usage (CSV/JSON per backend) |
     | `GET /api/v1/billing/usage/summary` | Aggregated usage for charts |
@@ -89,9 +92,16 @@ tags:
       Responses may include `post_call_analysis_results` when policy allows.
   - name: "Billing and usage"
     description: >
-      Credit balance, usage records, and per-session cost breakdowns.
-      With **`x-api-key`**, only **GET** (and HEAD/OPTIONS) are allowed on `/api/v1/billing/**`;
-      checkout and other writes require a **Bearer** session token.
+      Usage records, summaries, exports, and **`GET /billing/credit-balance`** (wallet-backed balance summary).
+      Self-serve checkout, Razorpay, pricing-plan catalog, and **`/billing/balance-history`** are not part of the API anymore.
+      With **`x-api-key`**, only **GET** (and HEAD/OPTIONS) are allowed on `/api/v1/billing/**`.
+  - name: Wallets
+    description: >
+      Unified wallets: materialized balance, credit grants, append-only ledger, monthly caps, and admin credit assignment.
+      **POST** routes require a **Bearer** session with org-admin or super-admin permissions.
+  - name: Earnings
+    description: >
+      Markup and commission summaries for **channel_partner** and **distributor** organizations (`GET /earnings/me`, breakdown, super-admin org view).
   - name: "Post-call analysis"
     description: >
       User-scoped analysis rules (`/api/v1/post-analysis/rules`) and mapping rules to agents
@@ -2025,7 +2035,11 @@ paths:
     get:
       tags: ["Billing and usage"]
       summary: Current credit balance summary
-      description: "**Full URL:** `GET https://api.kupe.in/api/v1/billing/credit-balance`"
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/billing/credit-balance`
+
+        Returns the same wallet-backed fields the dashboard uses (`credit_balance_usd`, monthly cap, etc.).
+        For **grants and ledger lines**, use **`GET /api/v1/wallets/{wallet_id}`** after resolving `wallet_id` from **`GET /api/v1/wallets/me`** or admin list endpoints.
       operationId: getBillingCreditBalance
       responses:
         "200":
@@ -2041,21 +2055,155 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
 
-  /api/v1/billing/balance-history:
+  /api/v1/wallets/me:
     get:
-      tags: ["Billing and usage"]
-      summary: Balance history
-      description: "**Full URL:** `GET https://api.kupe.in/api/v1/billing/balance-history`"
-      operationId: getBillingBalanceHistory
+      tags: ["Wallets"]
+      summary: My wallet summary
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/wallets/me` — authenticated user's wallet (balance, cap usage, metadata)."
+      operationId: getWalletMe
       responses:
         "200":
-          description: History rows
+          description: Wallet summary JSON
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ArbitraryJson"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/wallets/{wallet_id}:
+    get:
+      tags: ["Wallets"]
+      summary: Wallet detail (grants and ledger)
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/wallets/{wallet_id}` — grants, ledger entries, upcoming expiry (RBAC)."
+      operationId: getWalletById
+      parameters:
+        - name: wallet_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Wallet detail JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "404":
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/earnings/me:
+    get:
+      tags: ["Earnings"]
+      summary: My organization earnings summary
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/earnings/me` — reseller org (`channel_partner` / `distributor`); query `period`."
+      operationId: getEarningsMe
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [day, week, month, year, all]
+            default: month
+      responses:
+        "200":
+          description: Earnings summary JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Not a reseller org or not org_admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/earnings/me/breakdown:
+    get:
+      tags: ["Earnings"]
+      summary: My organization earnings breakdown
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/earnings/me/breakdown` — time buckets; query `period`."
+      operationId: getEarningsMeBreakdown
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [day, week, month, year, all]
+            default: month
+      responses:
+        "200":
+          description: Breakdown JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/earnings/orgs/{org_id}:
+    get:
+      tags: ["Earnings"]
+      summary: Organization earnings (super admin)
+      description: "**Full URL:** `GET https://api.kupe.in/api/v1/earnings/orgs/{org_id}` — **super_admin** only; query `period`."
+      operationId: getEarningsOrgSummary
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [day, week, month, year, all]
+            default: month
+      responses:
+        "200":
+          description: Earnings summary JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
