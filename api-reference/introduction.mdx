@@ -50,7 +50,7 @@ When you open **Try it** and click **Send**, the playground shows the **real HTT
 
 ### Outbound calls
 
-- **POST** `/api/call/create_call` — Outbound PSTN (`phoneNumber`, optional `user_id`, optional `agent_id`, …). If `user_id` is omitted, backend resolves from `x-api-key` or Bearer auth. Response **`call_sid`** = your **`call_id`**.
+- **POST** `/api/call/create_call` — Outbound PSTN (query params, not JSON). **Auth:** `x-api-key` (recommended) or `Authorization: Bearer` — that user is billed and their phone/agent mappings apply (**no** `user_id` query). Response includes **`request_id`**, **`call_session_id`**, optional **`telephony_leg_id`**; `telephony_provider` is always `pstn` in JSON.
 
 ### Knowledge base
 
@@ -128,12 +128,12 @@ x-api-key: <YOUR_KUPE_API_KEY>
 
 In the **Try it** panel, open **Authentication**, choose **KupeApiKey**, and paste your key. The OpenAPI spec sets a placeholder via `x-default` for convenience.
 
-Your key is bound to a **user** in Kupe. Some routes still need that user’s UUID directly (for example `user_id` on file upload); `create_call` can now infer `user_id` from auth when omitted.
+Your key is bound to a **user** in Kupe. For **`POST /api/call/create_call`**, **`x-api-key`** or **Bearer** alone determines who is billed and whose lines are used — there is **no** `user_id` query on that route. Other routes may still require `user_id` in the path or body (e.g. file upload).
 
 ### Public routes
 
 - **GET** `/health` — no API key.
-- **POST** `/api/call/create_call` — optional `Origin` allow-list applies. You may pass `user_id` directly, or authenticate with `x-api-key` / Bearer and omit it.
+- **POST** `/api/call/create_call` — optional `Origin` allow-list applies. **Authenticate with `x-api-key` or Bearer** (user inferred from auth only).
 - **POST** `/api/v1/search/semantic` and **POST** `/api/v1/search/hybrid` — also excluded from API-key middleware; scope results with `agent_id` and secure at the edge if the URL is public.
 
 ---

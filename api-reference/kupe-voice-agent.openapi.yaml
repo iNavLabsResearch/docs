@@ -78,7 +78,9 @@ tags:
       Map an assistant or workflow to a **purchased phone line** so inbound PSTN hits the right runtime.
       Use **E.164** numbers where possible (e.g. **+91**… for India, **+1**… for the US).
   - name: "Outbound calls"
-    description: Initiate outbound PSTN calls.
+    description: >
+      Initiate outbound PSTN calls (`POST /api/call/create_call`). Authenticate with **`x-api-key`** or **Bearer**;
+      user is inferred from auth only; response includes `request_id` and `call_session_id`.
   - name: "Knowledge base"
     description: Files, agent–file mappings, and semantic or hybrid RAG search.
   - name: "Call logs"
@@ -184,6 +186,82 @@ components:
         detail:
           type: string
           example: "Forbidden: API Key does not have required scopes"
+
+    CreateOutboundCallSuccess:
+      type: object
+      required:
+        - status
+        - request_id
+        - call_session_id
+        - user_id
+        - telephony_provider
+        - target_number
+      properties:
+        status:
+          type: string
+          enum: [success]
+        request_id:
+          type: string
+          format: uuid
+          description: >
+            Correlation id for tracing (logs, analytics, `GET /api/v1/call-analytics?request_id=`).
+            Echoed on telephony WebSocket when the carrier includes it in the media URL.
+        call_session_id:
+          type: string
+          format: uuid
+          description: Primary key in Kupe `call_sessions` for this dial.
+        user_id:
+          type: string
+          format: uuid
+          description: >
+            User charged and whose phone mappings applied — always the API key owner or Bearer session user
+            (same as auth; echoed for convenience).
+        telephony_provider:
+          type: string
+          example: pstn
+          description: Stable public label; vendor-specific telephony names are not returned in this JSON.
+        target_number:
+          type: string
+          description: Destination dialed (as submitted, normalized server-side).
+        from_phone_number:
+          type: string
+          description: Caller line used when resolved.
+        telephony_leg_id:
+          type: string
+          description: >
+            Opaque provider leg identifier when available (e.g. Twilio Call SID). Not labeled by vendor in JSON.
+
+    CreateOutboundCallFailed:
+      type: object
+      required:
+        - status
+        - request_id
+        - call_session_id
+        - user_id
+        - telephony_provider
+        - target_number
+        - detail
+      properties:
+        status:
+          type: string
+          enum: [failed]
+        request_id:
+          type: string
+          format: uuid
+        call_session_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        telephony_provider:
+          type: string
+          example: pstn
+        target_number:
+          type: string
+        detail:
+          type: string
+          description: Human-readable failure reason (no raw carrier payloads).
 
     CreateAgentRequest:
       type: object
@@ -1205,21 +1283,28 @@ paths:
         **Full URL (query string, not JSON body):**  
         `POST https://api.kupe.in/api/call/create_call?phoneNumber=%2B15551234567&agent_id={uuid}`
 
-        Places an outbound PSTN call. **Query parameters** (not JSON body): `phoneNumber`, optional `user_id`,
-        optional `agent_id`, `workflow_id`, `phone_number_id`. Optional `Origin` header must pass allow-list if present.
+        Places an outbound PSTN call. **Query parameters** (not JSON body): `phoneNumber` (required),
+        optional `agent_id`, `workflow_id`, `phone_number_id`. There is **no** `user_id` query — the user is always the
+        **API key owner** or **Bearer session** user.
 
-        **Identity resolution:** when `user_id` is omitted, backend resolves it from authenticated identity (`x-api-key`
-        or `Authorization: Bearer <token>`). If neither `user_id` nor valid auth is provided, request returns `401`.
+        **Authentication (required):** **`x-api-key`** (recommended for integrations) **or**
+        **`Authorization: Bearer`** with your Supabase session JWT. That identity is used for billing and for
+        resolving `phone_numbers` and agent–phone mappings.
 
-        **Destination numbers:** use **E.164** with country code — e.g. **+91** for India, **+1** for the United States
-        (URL-encode the `+` as `%2B` in curl).
+        **Phone access:** outbound uses `phone_number_id` and/or agent or workflow mapping on **that** user’s rows;
+        credentials and PSTN backend follow the stored `provider` (Twilio, Elison, Exotel).
 
-        **Outbound line:** when `phone_number_id` is set (or can be inferred from the agent/workflow mapping), Kupe uses
-        that row’s telephony backend. When no row is resolved, a legacy fallback may use the first available line for the user.
+        **Destination numbers:** **E.164** with country code (URL-encode `+` as `%2B` in curl).
 
-        **Response `call_sid`:** use as your **`call_id`** when present; billing may also track internal session ids.
+        **Outbound line:** when `phone_number_id` is set or inferred from mapping, that row’s telephony backend is used;
+        otherwise the first available active line for the subject (stable provider order) may be used.
+
+        **Response:** `request_id` and `call_session_id` are always returned for tracing; `telephony_leg_id` when the
+        carrier returns an id. Use `call_session_id` as the primary session key; correlate logs with `request_id`.
       operationId: createOutboundCall
-      security: []
+      security:
+        - KupeApiKey: []
+        - BearerAuth: []
       parameters:
         - name: phoneNumber
           in: query
@@ -1227,12 +1312,6 @@ paths:
           schema:
             type: string
           example: "+15551234567"
-        - name: user_id
-          in: query
-          required: false
-          schema:
-            type: string
-            format: uuid
         - name: agent_id
           in: query
           required: false
@@ -1251,30 +1330,15 @@ paths:
             format: uuid
       responses:
         "200":
-          description: Call queued / initiated
+          description: >
+            Call initiated (`status: success`) or initiation recorded as failed (`status: failed`) with the same
+            ids for tracing — HTTP 200 so clients always receive `request_id` / `call_session_id`.
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
-                description: Success payload; fields vary by telephony backend (`call_sid` when returned).
-                properties:
-                  status:
-                    type: string
-                    example: success
-                  message:
-                    type: string
-                  provider:
-                    type: string
-                    description: Internal backend key for this dial.
-                  call_sid:
-                    type: string
-                    description: External call identifier when available — use as call_id.
-                  from_phone_number:
-                    type: string
-                  user_id:
-                    type: string
-                    format: uuid
+                oneOf:
+                  - $ref: "#/components/schemas/CreateOutboundCallSuccess"
+                  - $ref: "#/components/schemas/CreateOutboundCallFailed"
         "402":
           description: Billing / credits — user cannot start metered usage
           content:
@@ -1282,14 +1346,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
         "403":
-          description: Invalid Origin header (when `Origin` is sent and fails 
-            validation)
+          description: Invalid `Origin` header (when sent and not allow-listed).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
         "401":
-          description: Missing/invalid authentication when `user_id` is omitted
+          description: Missing or invalid `x-api-key` / Bearer token (no authenticated actor).
           content:
             application/json:
               schema:
