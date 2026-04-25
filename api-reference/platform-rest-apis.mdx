@@ -136,7 +136,7 @@ Base path: **`/api/v1/api-keys`**
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `""` | Create key. Body: `{ "api_key": "<secret>", "user_id": "<uuid>", "provider_name": "milli_chat_ai", "name": "optional label" }`. Response: `{ "message", "api_key": { ... } }`. |
+| `POST` | `""` | Create key. Body: `{ "api_key": "<secret>", "user_id": "<uuid>",  , "name": "optional label" }`. Response: `{ "message", "api_key": { ... } }`. |
 | `GET` | `/fetch/{user_id}` | List **active** keys for a user (same user or org-admin scope). |
 | `POST` | `/exists` | Body `{ user_id, provider_name }` → `true` if any active key exists for that provider. |
 | `PATCH` | `/{key_id}` | Body `{ "name": "new label" }` (empty string clears the label). |

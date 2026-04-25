@@ -19,7 +19,7 @@ For **server integrations**, send the Kupe API key (no `Bearer` prefix):
 x-api-key: <YOUR_KUPE_API_KEY>
 ```
 
-The key is tied to a **user account** in Kupe (same as dashboard login). That user’s UUID is required on several routes (for example file upload form fields and outbound `user_id` query parameter). To read it programmatically, call **`GET /api/v1/me`** with the same key — the JSON field **`user_id`** is the UUID.
+The key is tied to a **user account** in Kupe (same as dashboard login). For protected `/api/v1/**` routes, backend resolves user context from the key/JWT automatically (for example file upload/listing endpoints).
 
 For **dashboard / browser** flows you can instead send a Supabase session token:
 
@@ -71,16 +71,12 @@ When someone dials your **purchased PSTN number**, Kupe needs a **mapping** from
 ```json
 {
   "agent_id": "<your-agent-uuid>",
-  "phone_number_id": "<phone-row-uuid>",
-  "webhook_url": "https://api.kupe.in/api/call/incoming_call",
-  "config_source": "<same-label-as-in-dashboard-for-this-line>",
-  "user_id": "<owner-user-uuid>"
+  "phone_number_id": "<phone-row-uuid>"
 }
 ```
 
 - Send exactly one of **`agent_id`** or **`workflow_id`**.
-- **`user_id`** must own the line — use **`GET /api/v1/me`** when integrating with your own API key.
-- **`webhook_url`** and **`config_source`** must match what Kupe expects for that line (copy from the dashboard or your deployment runbook).
+- Authenticate with **`x-api-key`** or **Bearer** JWT. You do not need **`webhook_url`**, **`config_source`**, or **`user_id`** in the body; the server fills those from deployment defaults and the authenticated user when they are omitted.
 
 **Inspect:** **`GET /api/v1/phone/mapping/agent/{agent_id}`**, **`GET /api/v1/phone/mapping/{phone_number_id}`**.
 
@@ -144,12 +140,12 @@ Use these lists to populate UI or to resolve **codes** vs **UUIDs** for agent cr
 
 `POST /api/call/create_call`
 
-This route is **not** under `/api/v1` and is listed in auth exclusions: it does not require `x-api-key` today, but you should still protect it at the network edge because it accepts `user_id` as a query parameter.
+This route is **not** under `/api/v1`. You can pass `user_id` directly, or omit it and let backend resolve from `x-api-key` or `Authorization: Bearer <token>`.
 
 | Query parameter | Required | Description |
 |-----------------|----------|-------------|
 | `phoneNumber` | Yes | Destination — use **E.164** with country code (e.g. **+91**… India, **+1**… US/Canada); normalized server-side |
-| `user_id` | Yes | Owner user UUID |
+| `user_id` | No | Owner user UUID. If omitted, backend resolves from API key / Bearer token |
 | `agent_id` | No* | Agent to run (*recommended for voice agents) |
 | `workflow_id` | No | Alternative to `agent_id` |
 | `phone_number_id` | No | Specific outbound line from `phone_numbers` |
@@ -163,13 +159,17 @@ Optional header `Origin`: if present, must pass Kupe’s allow-list (`validate_o
 US/Canada-style destination:
 
 ```bash
-curl -sS -X POST 'https://api.kupe.in/api/call/create_call?phoneNumber=%2B15551234567&user_id=<USER_UUID>&agent_id=<AGENT_UUID>'
+curl -sS -X POST \
+  -H "x-api-key: <YOUR_KUPE_API_KEY>" \
+  'https://api.kupe.in/api/call/create_call?phoneNumber=%2B15551234567&agent_id=<AGENT_UUID>'
 ```
 
 India-style destination (URL-encoded `+`):
 
 ```bash
-curl -sS -X POST 'https://api.kupe.in/api/call/create_call?phoneNumber=%2B919876543210&user_id=<USER_UUID>&agent_id=<AGENT_UUID>'
+curl -sS -X POST \
+  -H "Authorization: Bearer <SUPABASE_JWT>" \
+  'https://api.kupe.in/api/call/create_call?phoneNumber=%2B919876543210&agent_id=<AGENT_UUID>'
 ```
 
 **Typical success JSON**
@@ -190,6 +190,7 @@ Treat **`call_sid`** as the unique call identifier when the field is returned (`
 **Failure cases**
 
 - `402` — billing / credits
+- `401` — `user_id` missing and no valid `x-api-key` / Bearer token
 - `403` — invalid `Origin`
 - `500` — no configured from-number, telephony error, etc.
 
@@ -206,12 +207,11 @@ There is **no** single public “scrape this URL into the vector DB” REST rout
 | Field | Description |
 |-------|-------------|
 | `file` | Document / audio / etc. (see `GET /api/v1/files/supported-formats`) |
-| `user_id` | Owner UUID |
 | `agent_id` | Optional — when set, chunks are tagged for that agent’s retrieval |
 
 ### List user files
 
-`GET /api/v1/files/user/{user_id}`
+`GET /api/v1/files/user/me`
 
 ### Get / update / delete file
 

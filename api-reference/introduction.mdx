@@ -50,13 +50,13 @@ When you open **Try it** and click **Send**, the playground shows the **real HTT
 
 ### Outbound calls
 
-- **POST** `/api/call/create_call` — Outbound PSTN (`phoneNumber`, `user_id`, optional `agent_id`, …). Response **`call_sid`** = your **`call_id`**.
+- **POST** `/api/call/create_call` — Outbound PSTN (`phoneNumber`, optional `user_id`, optional `agent_id`, …). If `user_id` is omitted, backend resolves from `x-api-key` or Bearer auth. Response **`call_sid`** = your **`call_id`**.
 
 ### Knowledge base
 
 - **POST** `/api/v1/files/upload` — Upload file (multipart).
 - **GET** `/api/v1/files/supported-formats` — Allowed MIME types.
-- **GET** `/api/v1/files/user/{user_id}` — List files for a user.
+- **GET** `/api/v1/files/user/me` — List files for authenticated user.
 - **GET** `/api/v1/files/{file_id}` — File metadata + signed URLs.
 - **DELETE** `/api/v1/files/{file_id}` — Delete file everywhere.
 - **POST** `/api/v1/agent-files-mappings/create` — Attach file to agent.
@@ -128,12 +128,12 @@ x-api-key: <YOUR_KUPE_API_KEY>
 
 In the **Try it** panel, open **Authentication**, choose **KupeApiKey**, and paste your key. The OpenAPI spec sets a placeholder via `x-default` for convenience.
 
-Your key is bound to a **user** in Kupe. Some routes also need that user’s UUID (for example `user_id` on file upload or outbound `create_call`).
+Your key is bound to a **user** in Kupe. Some routes still need that user’s UUID directly (for example `user_id` on file upload); `create_call` can now infer `user_id` from auth when omitted.
 
 ### Public routes
 
 - **GET** `/health` — no API key.
-- **POST** `/api/call/create_call` — excluded from API-key middleware in the backend (still protect at the edge); optional `Origin` allow-list applies.
+- **POST** `/api/call/create_call` — optional `Origin` allow-list applies. You may pass `user_id` directly, or authenticate with `x-api-key` / Bearer and omit it.
 - **POST** `/api/v1/search/semantic` and **POST** `/api/v1/search/hybrid` — also excluded from API-key middleware; scope results with `agent_id` and secure at the edge if the URL is public.
 
 ---

@@ -8,6 +8,8 @@ info:
     |------|----------|
     | `GET /health` | `https://api.kupe.in/health` |
     | `GET /api/v1/me` | `https://api.kupe.in/api/v1/me` (requires `x-api-key` **or** `Authorization: Bearer`) |
+    | `GET /api/v1/me/users` | `https://api.kupe.in/api/v1/me/users` |
+    | `GET /api/v1/phone` | `https://api.kupe.in/api/v1/phone` (all provisioned phone lines) |
     | `POST /api/v1/phone/mapping` | `https://api.kupe.in/api/v1/phone/mapping` (inbound line → agent/workflow) |
     | `GET /api/v1/agents` | `https://api.kupe.in/api/v1/agents` |
     | `POST /api/v1/agents/simple` | `https://api.kupe.in/api/v1/agents/simple` |
@@ -20,7 +22,7 @@ info:
     | `POST /api/call/create_call` | `https://api.kupe.in/api/call/create_call` |
     | `POST /api/v1/files/upload` | `https://api.kupe.in/api/v1/files/upload` |
     | `GET /api/v1/files/supported-formats` | `https://api.kupe.in/api/v1/files/supported-formats` |
-    | `GET /api/v1/files/user/{user_id}` | `https://api.kupe.in/api/v1/files/user/{user_id}` |
+    | `GET /api/v1/files/user/me` | `https://api.kupe.in/api/v1/files/user/me` |
     | `GET/DELETE /api/v1/files/{file_id}` | `https://api.kupe.in/api/v1/files/{file_id}` |
     | `POST /api/v1/agent-files-mappings/create` | `https://api.kupe.in/api/v1/agent-files-mappings/create` |
     | `GET /api/v1/agent-files-mappings/agent/{agent_id}` | `https://api.kupe.in/api/v1/agent-files-mappings/agent/{agent_id}` |
@@ -33,6 +35,7 @@ info:
     | `GET /api/v1/billing/usage/records` | Usage grouped by session (cost, duration, agent) |
     | `GET /api/v1/billing/usage/export` | Export usage (CSV/JSON per backend) |
     | `GET /api/v1/billing/usage/summary` | Aggregated usage for charts |
+    | `GET /api/v1/billing/usage/overview` | Total and this-month usage totals |
     | `GET /api/v1/billing/usage-records` | Usage organized by call sessions |
     | `GET /api/v1/tool-endpoint-defs` | List or create HTTP tool definitions |
     | `GET /api/v1/tools-mcp-server-defs` | List or create MCP server tool definitions |
@@ -61,11 +64,23 @@ tags:
   - name: Service
     description: Public health check and authenticated **current user** profile.
   - name: "Current user"
-    description: Signed-in user id, email, and avatar (`GET /api/v1/me`).
+    description: Signed-in user details (`GET /api/v1/me`) and accessible users (`GET /api/v1/me/users`).
+  - name: "Agent Management"
+    description: List, create (defaults), read, update, and delete voice agents.
+  - name: Providers
+    description: LLM, TTS, and STT catalogs plus TTS voice rows (`GET /api/v1/tts-voices`).
+  - name: "Phone numbers"
+    description: >
+      List all provisioned **phone_numbers** rows (`GET /api/v1/phone`). Use each row’s **`id`** as **`phone_number_id`**
+      for inbound mapping and outbound calls. Prefer **E.164** numbers where possible.
   - name: "Incoming calls"
     description: >
       Map an assistant or workflow to a **purchased phone line** so inbound PSTN hits the right runtime.
       Use **E.164** numbers where possible (e.g. **+91**… for India, **+1**… for the US).
+  - name: "Outbound calls"
+    description: Initiate outbound PSTN calls.
+  - name: "Knowledge base"
+    description: Files, agent–file mappings, and semantic or hybrid RAG search.
   - name: "Call logs"
     description: >
       Call session analytics: list, pagination, single session by `request_id`, and exports.
@@ -75,24 +90,16 @@ tags:
       Credit balance, usage records, and per-session cost breakdowns.
       With **`x-api-key`**, only **GET** (and HEAD/OPTIONS) are allowed on `/api/v1/billing/**`;
       checkout and other writes require a **Bearer** session token.
-  - name: "Tools and MCP"
-    description: >
-      Custom HTTP tool definitions, MCP server definitions, and attaching tools to agents
-      (`/api/v1/agents/{agent_id}/tools`).
   - name: "Post-call analysis"
     description: >
       User-scoped analysis rules (`/api/v1/post-analysis/rules`) and mapping rules to agents
       (`/api/v1/agents/{agent_id}/post-analysis`).
+  - name: "Tools and MCP"
+    description: >
+      Custom HTTP tool definitions, MCP server definitions, and attaching tools to agents
+      (`/api/v1/agents/{agent_id}/tools`).
   - name: "API keys"
     description: Create, list, rename (label), and revoke Kupe API keys for integrations.
-  - name: "Agent Management"
-    description: List, create (defaults), read, update, and delete voice agents.
-  - name: Providers
-    description: LLM, TTS, and STT catalogs plus TTS voice rows (`GET /api/v1/tts-voices`).
-  - name: "Outbound calls"
-    description: Initiate outbound PSTN calls.
-  - name: "Knowledge base"
-    description: Files, agent–file mappings, and semantic or hybrid RAG search.
   - name: Webhooks
     description: Example payloads Kupe can POST to **your** HTTPS URL 
       (post-analysis HTTP tool).
@@ -149,10 +156,15 @@ components:
 
     AgentPhoneMappingRequest:
       type: object
-      required: [phone_number_id, webhook_url, config_source, user_id]
+      required: [phone_number_id]
       description: >
         Link exactly one of **`agent_id`** or **`workflow_id`** to a **`phone_number_id`**.
-        `config_source` and `webhook_url` must match the inbound configuration for that line in Kupe.
+
+        **Server-managed fields:** When you authenticate with **Bearer** or **`x-api-key`**, you do not need to send
+        **`webhook_url`**, **`config_source`**, or **`user_id`**. The API derives the inbound voice webhook from the
+        deployment base URL, defaults the config source for standard PSTN/Twilio lines, and uses the authenticated
+        user for ownership checks against the phone row. (Optional body overrides remain supported for internal or
+        legacy clients.)
       properties:
         agent_id:
           type: string
@@ -165,17 +177,6 @@ components:
         phone_number_id:
           type: string
           format: uuid
-        webhook_url:
-          type: string
-          format: uri
-          example: "https://api.kupe.in/api/call/incoming_call"
-        config_source:
-          type: string
-          description: Line routing label stored with the mapping (must match dashboard / deployment).
-        user_id:
-          type: string
-          format: uuid
-          description: Owner of the phone line (use `GET /api/v1/me` when integrating with your own key).
 
     ErrorDetail:
       type: object
@@ -577,7 +578,7 @@ paths:
   /api/v1/me:
     get:
       tags: ["Current user"]
-      summary: Current user profile
+      summary: Me
       description: |
         **Full URL:** `GET https://api.kupe.in/api/v1/me`
 
@@ -609,56 +610,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
-  /api/v1/phone/mapping:
-    post:
-      tags: ["Incoming calls"]
-      summary: Map agent or workflow to a phone line
+  /api/v1/me/users:
+    get:
+      tags: ["Current user"]
+      summary: List users
       description: |
-        **Full URL:** `POST https://api.kupe.in/api/v1/phone/mapping`
+        **Full URL:** `GET https://api.kupe.in/api/v1/me/users`
 
-        Attaches an **agent** (or **workflow**) to a **phone_numbers** row so inbound PSTN on that line
-        reaches the correct assistant. Phone numbers should be provisioned in **E.164** where possible
-        (e.g. **+91**xxxxxxxxxx for India, **+1**xxxxxxxxxx for the US).
-
-        Send exactly one of **`agent_id`** or **`workflow_id`**. **`user_id`** must own the line.
-      operationId: createAgentPhoneMapping
+        Returns accessible user ids with profile details for enterprise-enabled access.
+        For non-eligible access levels, returns an empty list with a short message.
+      operationId: listCurrentScopeUsers
       security:
         - KupeApiKey: []
         - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AgentPhoneMappingRequest"
-            example:
-              agent_id: "00000000-0000-0000-0000-000000000001"
-              phone_number_id: "00000000-0000-0000-0000-000000000002"
-              webhook_url: "https://api.kupe.in/api/call/incoming_call"
-              config_source: "primary-inbound"
-              user_id: "00000000-0000-0000-0000-000000000003"
       responses:
         "200":
-          description: Mapping created
+          description: User list response
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
-        "400":
-          description: Validation error (missing ids, both agent and workflow, etc.)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorDetail"
+                $ref: "#/components/schemas/ArbitraryJson"
         "401":
-          description: Unauthorized
+          description: Missing or invalid credentials
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
-        "500":
-          description: Server error
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1095,6 +1074,128 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
+  /api/v1/phone:
+    get:
+      tags: ["Phone numbers"]
+      summary: Get all phone numbers
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/phone`
+
+        Returns **`success`** and **`phone_numbers`**: every provisioned line (UUID **`id`**, **`phone_number`**, optional
+        **`friendly_name`**, **`country_code`**, **`region`**, **`is_active`**, **`created_at`**). Use each **`id`**
+        as **`phone_number_id`** when attaching agents or workflows (`POST /api/v1/phone/mapping`) or when starting
+        outbound calls. Numbers are typically stored in **E.164** where possible.
+      operationId: listAllPhoneNumbers
+      security:
+        - KupeApiKey: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, phone_numbers]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  phone_numbers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        phone_number:
+                          type: string
+                        friendly_name:
+                          type: string
+                          nullable: true
+                        country_code:
+                          type: string
+                          nullable: true
+                        region:
+                          type: string
+                          nullable: true
+                        is_active:
+                          type: boolean
+                        created_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+  /api/v1/phone/mapping:
+    post:
+      tags: ["Incoming calls"]
+      summary: Map agent or workflow to a phone line
+      description: |
+        **Full URL:** `POST https://api.kupe.in/api/v1/phone/mapping`
+
+        Attaches an **agent** (or **workflow**) to a **phone_numbers** row so inbound PSTN on that line
+        reaches the correct assistant. Phone numbers should be provisioned in **E.164** where possible
+        (e.g. **+91**xxxxxxxxxx for India, **+1**xxxxxxxxxx for the US).
+
+        Send exactly one of **`agent_id`** or **`workflow_id`**.
+
+        **Authentication:** Use **`x-api-key`** or **Bearer** JWT. **`webhook_url`**, **`config_source`**, and
+        **`user_id`** are optional; when omitted they are set by the server from deployment config and the
+        authenticated principal (see schema **`AgentPhoneMappingRequest`**).
+
+        **Response payload:** `webhook_url` and `config_source` are internal implementation details and are not
+        returned by this endpoint.
+      operationId: createAgentPhoneMapping
+      security:
+        - KupeApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentPhoneMappingRequest"
+            example:
+              agent_id: "00000000-0000-0000-0000-000000000001"
+              phone_number_id: "00000000-0000-0000-0000-000000000002"
+      responses:
+        "200":
+          description: Mapping created
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          description: Validation error (missing ids, both agent and workflow, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
 
   /api/call/create_call:
     post:
@@ -1102,19 +1203,19 @@ paths:
       summary: Initiate outbound call
       description: |
         **Full URL (query string, not JSON body):**  
-        `POST https://api.kupe.in/api/call/create_call?phoneNumber=%2B15551234567&user_id={uuid}&agent_id={uuid}`
+        `POST https://api.kupe.in/api/call/create_call?phoneNumber=%2B15551234567&agent_id={uuid}`
 
-        Places an outbound PSTN call. **Query parameters** (not JSON body): `phoneNumber`, `user_id`, optional `agent_id`,
-        `workflow_id`, `phone_number_id`. Optional `Origin` header must pass allow-list if present.
+        Places an outbound PSTN call. **Query parameters** (not JSON body): `phoneNumber`, optional `user_id`,
+        optional `agent_id`, `workflow_id`, `phone_number_id`. Optional `Origin` header must pass allow-list if present.
+
+        **Identity resolution:** when `user_id` is omitted, backend resolves it from authenticated identity (`x-api-key`
+        or `Authorization: Bearer <token>`). If neither `user_id` nor valid auth is provided, request returns `401`.
 
         **Destination numbers:** use **E.164** with country code — e.g. **+91** for India, **+1** for the United States
         (URL-encode the `+` as `%2B` in curl).
 
         **Outbound line:** when `phone_number_id` is set (or can be inferred from the agent/workflow mapping), Kupe uses
         that row’s telephony backend. When no row is resolved, a legacy fallback may use the first available line for the user.
-
-        **Auth:** this path is excluded from `x-api-key` / Supabase JWT in the backend — treat it as a **server-side** integration
-        and protect it at your edge (IP allow list, private network, or your own gateway auth).
 
         **Response `call_sid`:** use as your **`call_id`** when present; billing may also track internal session ids.
       operationId: createOutboundCall
@@ -1128,7 +1229,7 @@ paths:
           example: "+15551234567"
         - name: user_id
           in: query
-          required: true
+          required: false
           schema:
             type: string
             format: uuid
@@ -1187,6 +1288,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
+        "401":
+          description: Missing/invalid authentication when `user_id` is omitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
         "500":
           description: Telephony configuration error (e.g. no from-number for 
             user) or provider failure
@@ -1209,7 +1316,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [file, user_id]
+              required: [file]
               properties:
                 file:
                   type: string
@@ -1217,12 +1324,11 @@ paths:
                 user_id:
                   type: string
                   format: uuid
+                  nullable: true
+                  description: Optional legacy override. Omit in normal usage; backend uses authenticated user.
                 agent_id:
                   type: string
                   format: uuid
-                vector_db_type:
-                  type: string
-                  enum: [chromadb, lancedb, pinecone]
       responses:
         "200":
           description: File processed — `data` is the upload row (`id`, 
@@ -1276,19 +1382,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
 
-  /api/v1/files/user/{user_id}:
+  /api/v1/files/user/me:
     get:
       tags: ["Knowledge base"]
-      summary: List files for user
-      description: "**Full URL:** `GET https://api.kupe.in/api/v1/files/user/{user_id}`"
-      operationId: listUserFiles
-      parameters:
-        - name: user_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+      summary: List files for authenticated user
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/files/user/me`
+
+        Uses **Bearer** or **`x-api-key`** context; clients do not pass `user_id`.
+      operationId: listAuthenticatedUserFiles
       responses:
         "200":
           description: SuccessResponse — `data.files` is the list of file 
@@ -1817,6 +1919,40 @@ paths:
                 $ref: "#/components/schemas/ArbitraryJson"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/billing/usage/overview:
+    get:
+      tags: ["Billing and usage"]
+      summary: Usage overview totals
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/billing/usage/overview`
+
+        Returns total and this-month usage duration and cost for the current access scope.
+        Optional query `user_id` narrows the result to one accessible user.
+      operationId: getBillingUsageOverview
+      parameters:
+        - name: user_id
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Totals and this-month usage (duration and cost)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2465,7 +2601,8 @@ paths:
       description: |
         **Full URL:** `POST https://api.kupe.in/api/v1/api-keys`
 
-        Body: `{ "api_key": "<secret>", "user_id": "<uuid>", "provider_name": "milli_chat_ai", "name": "optional label" }`.
+        Body: `{ "user_id": "<optional-uuid>", "name": "optional label" }`.
+        The API key value is generated by the server.
         Response: `{ "message", "api_key": { ... } }`.
       operationId: createApiKey
       requestBody:
@@ -2474,10 +2611,8 @@ paths:
           application/json:
             schema:
               type: object
-              required: [api_key, user_id]
               properties:
-                api_key: { type: string }
-                user_id: { type: string, format: uuid }
+                user_id: { type: string, format: uuid, nullable: true }
                 provider_name: { type: string, default: "milli_chat_ai" }
                 name: { type: string }
       responses:
@@ -2488,16 +2623,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/ArbitraryJson"
 
-  /api/v1/api-keys/fetch/{user_id}:
+  /api/v1/api-keys/fetch:
     get:
       tags: ["API keys"]
-      summary: List active API keys for a user
-      operationId: listApiKeysForUser
+      summary: List active API keys
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/api-keys/fetch`
+
+        Optional query `user_id` lets eligible org-level access list another user's keys.
+        Without `user_id`, keys are listed for the authenticated user.
+      operationId: listApiKeys
       parameters:
         - name: user_id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
+          in: query
+          required: false
+          schema: { type: string, format: uuid, nullable: true }
       responses:
         "200":
           description: OK
@@ -2518,12 +2658,20 @@ paths:
     patch:
       tags: ["API keys"]
       summary: Update API key display name
+      description: |
+        **Full URL:** `PATCH https://api.kupe.in/api/v1/api-keys/{key_id}`
+
+        Optional query `user_id` can be passed for scoped management flows.
       operationId: patchApiKeyLabel
       parameters:
         - name: key_id
           in: path
           required: true
           schema: { type: string, format: uuid }
+        - name: user_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid, nullable: true }
       requestBody:
         required: true
         content:
@@ -2543,12 +2691,20 @@ paths:
     delete:
       tags: ["API keys"]
       summary: Revoke API key
+      description: |
+        **Full URL:** `DELETE https://api.kupe.in/api/v1/api-keys/{key_id}`
+
+        Optional query `user_id` can be passed for scoped management flows.
       operationId: revokeApiKey
       parameters:
         - name: key_id
           in: path
           required: true
           schema: { type: string, format: uuid }
+        - name: user_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid, nullable: true }
       responses:
         "200":
           description: OK
