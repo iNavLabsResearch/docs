@@ -1,6 +1,6 @@
 ---
 title: Platform REST APIs
-description: Tools, agents, outbound batches, call logs, billing, and API keys — paths and usage patterns for integrations.
+description: Tools, agents, outbound batches, call logs, billing (usage and credit summary), wallets, earnings, feature flags, and API keys — paths and usage patterns for integrations.
 ---
 
 All routes below are under your API host (for example `https://api.kupe.in`) unless noted. Authenticate with **`Authorization: Bearer <supabase_jwt>`** from the dashboard, or **`x-api-key: <kupe_api_key>`** for server integrations.
@@ -106,7 +106,7 @@ Post-call analysis fields (when not redacted) appear on the session object, e.g.
 
 ---
 
-## Billing and usage (credits, cost, duration)
+## Billing and usage (usage, cost, credit summary)
 
 Base path: **`/api/v1/billing`**
 
@@ -117,16 +117,66 @@ Typical **read** endpoints (also available under `/billing/...` where the router
 | `/usage-records` | Usage organized by call sessions. |
 | `/usage/records` | Service usage records with filters (`time_filter`, `usage_type`, search, `limit`/`offset`). |
 | `/usage/summary` | Aggregated summary for charts. |
+| `/usage/overview` | Totals and this-month usage for the authenticated scope. |
 | `/usage/sessions/{session_id}` | Usage and cost for one session. |
-| `/credit-balance` | Current credit balance summary. |
-| `/balance-history` | Balance history. |
-| `/plans`, `/pricing-plans`, … | Catalog / pricing reads as exposed by your build. |
+| `/usage/export` | Export usage (e.g. CSV by email; filters align with `/usage/records`). |
+| `/credit-balance` | Credit balance summary — backed by the unified **wallets** row (`available_balance_usd`, monthly cap fields when set). |
+
+**Removed** from the product (do not call): self-serve **pricing plans**, **payment checkout**, **Razorpay** webhooks, **`/balance-history`** (legacy ledger). Historical balance movements and grants are returned from **`GET /api/v1/wallets/{wallet_id}`** (see **Wallets** below).
+
+Other **`GET /api/v1/billing/**`** routes your deployment may expose (e.g. forex quotes, service pricing) remain read-only catalog helpers where implemented.
 
 ### API key vs session (important)
 
-When you authenticate with **`x-api-key`**, **only `GET` (and `HEAD`/`OPTIONS`)** are allowed on billing paths. Checkout, grant-credits, payment intents, and other **writes** require a **Bearer (session) token** from the dashboard.
+When you authenticate with **`x-api-key`**, **only `GET` (and `HEAD`/`OPTIONS`)** are allowed on **`/api/v1/billing/**`**. There is no API-key billing **write** surface.
 
-Webhooks (`/api/v1/billing/webhook`, Razorpay routes, etc.) stay on the server allow-list and are not blocked by this rule.
+**Wallets** and **earnings** live under **`/api/v1/wallets/**`** and **`/api/v1/earnings/**`**. Assigning credits, caps, org business model, markup, and commission are **POST** operations and require a **Bearer (session) token** with the appropriate org or super-admin role.
+
+### Feature flags
+
+Base path: **`/api/v1/feature-flags`**
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/me` | Boolean feature flags for the signed-in user. |
+| `GET` | `/{user_id}` | Read another user’s flags when RBAC allows. |
+| `PUT` | `/{user_id}` | Update boolean flags only. **Per-user billing markup** fields are no longer accepted here — retail markup is configured at the **organization** via **`POST /api/v1/orgs/{org_id}/markup`** (see **Wallets**). |
+
+---
+
+## Wallets (credits, grants, ledger, org business model)
+
+Base path: **`/api/v1/wallets`** (plus org-scoped helpers under **`/api/v1/orgs`** for business model / commission / markup).
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/wallets/me` | Current user’s wallet summary (materialized balance, monthly cap usage when configured). |
+| `GET` | `/wallets/{wallet_id}` | Wallet detail: grants, **append-only ledger**, upcoming expiry (access controlled by role and org scope). |
+| `GET` | `/wallets/users` | List user wallets (**super_admin**). |
+| `GET` | `/wallets/orgs` | List organization wallets (**super_admin**). |
+| `GET` | `/wallets/orgs/{org_id}/members` | Member wallets in an organization (**org_admin** or **super_admin**). |
+| `POST` | `/wallets/{wallet_id}/grants` | Assign credits (org admin transfers from org wallet; super admin creates grants as configured). |
+| `POST` | `/wallets/{wallet_id}/cap` | Set or clear **monthly spend cap** (USD) on a wallet. |
+| `POST` | `/wallets/{wallet_id}/adjust` | Super-admin-only ledger adjustment (no credit-grant row). |
+| `POST` | `/orgs/{org_id}/business-model` | Set `org_type`: `internal`, `channel_partner`, or `distributor` (**super_admin**). |
+| `POST` | `/orgs/{org_id}/commission` | Set **commission** percentage for the org (**super_admin**). |
+| `POST` | `/orgs/{org_id}/markup` | Set **markup** percentage and currency for reseller pricing (**org_admin** of reseller org or **super_admin**). |
+
+Legacy organization billing routes such as **`/organizations/{id}/billing/assign-credits`** return **410 Gone**; use **`POST /api/v1/wallets/{wallet_id}/grants`** instead.
+
+---
+
+## Earnings (reseller markup and commission)
+
+Base path: **`/api/v1/earnings`**
+
+For **org_admin** users whose organization is a **channel_partner** or **distributor** (not `internal`):
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/earnings/me` | Summary for the caller’s org. Query: `period` = `day` \| `week` \| `month` \| `year` \| `all` (default `month`). |
+| `GET` | `/earnings/me/breakdown` | Time-bucketed breakdown; same `period` query. |
+| `GET` | `/earnings/orgs/{org_id}` | **Super_admin** view of any org’s earnings summary; same `period` query. |
 
 ---
 

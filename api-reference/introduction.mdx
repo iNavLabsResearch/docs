@@ -9,7 +9,7 @@ Use this **API reference** tab to explore every Voice Agent endpoint with Mintli
 
 The live API is served at **`https://api.kupe.in`**. The OpenAPI source for this tab is **`api-reference/kupe-voice-agent.openapi.yaml`** in the docs repo.
 
-Use the **left sidebar** (OpenAPI tag groups, including **Service**, **Current user**, **Incoming calls**, **Call logs**, **Billing and usage**, **Tools and MCP**, **Post-call analysis**, **API keys**, then **Agent Management**, **Providers**, **Outbound calls**, **Knowledge base**, **Webhooks**) to open each operation. Every page includes **Try it**, request parameters, and response **schemas**. Tag names avoid `&` so Mintlify can render every group reliably.
+Use the **left sidebar** (OpenAPI tag groups, including **Service**, **Current user**, **Incoming calls**, **Call logs**, **Billing and usage**, **Wallets**, **Earnings**, **Tools and MCP**, **Post-call analysis**, **API keys**, then **Agent Management**, **Providers**, **Outbound calls**, **Knowledge base**, **Webhooks**) to open each operation. Every page includes **Try it**, request parameters, and response **schemas**. Tag names avoid `&` so Mintlify can render every group reliably.
 
 For narrative tables (batches, post-analysis rules, etc.), see **[Platform REST APIs](./platform-rest-apis)**.
 
@@ -75,12 +75,39 @@ When you open **Try it** and click **Send**, the playground shows the **real HTT
 - **GET** `/api/v1/billing/usage-records` — Usage by call sessions.
 - **GET** `/api/v1/billing/usage/records` — Grouped usage rows (`time_filter`, `usage_type`, `search`, pagination).
 - **GET** `/api/v1/billing/usage/summary` — Aggregated chart data.
+- **GET** `/api/v1/billing/usage/overview` — Totals and this-month usage for the current scope.
 - **GET** `/api/v1/billing/usage/export` — Email CSV export (`time_filter`, `from_date`/`to_date`, filters).
-- **GET** `/api/v1/billing/credit-balance` — Credit balance summary.
-- **GET** `/api/v1/billing/balance-history` — Balance history.
+- **GET** `/api/v1/billing/credit-balance` — Credit balance summary (reads the unified **wallet** materialized balance).
 - **GET** `/api/v1/billing/usage/sessions/{session_id}` — Cost/usage for one session.
 
-With **`x-api-key`**, only **GET** billing routes are allowed; writes need a **Bearer** session.
+Credits are assigned by admins through the **Wallets** APIs (no self-serve checkout or payment-gateway webhooks). Grant, cap, and ledger history live under **`/api/v1/wallets/**`** — not under `/billing`.
+
+With **`x-api-key`**, only **GET** routes under **`/api/v1/billing/**`** are allowed; billing writes are not exposed for API keys. Wallet and earnings **mutations** require a **Bearer** session.
+
+### Wallets (credits, grants, ledger)
+
+- **GET** `/api/v1/wallets/me` — Caller’s wallet summary (balance, monthly cap usage when set).
+- **GET** `/api/v1/wallets/{wallet_id}` — Wallet detail: grants, ledger, upcoming expiry (RBAC: own wallet, org scope, or super admin).
+- **GET** `/api/v1/wallets/users` — List user wallets (**super_admin**).
+- **GET** `/api/v1/wallets/orgs` — List organization wallets (**super_admin**).
+- **GET** `/api/v1/wallets/orgs/{org_id}/members` — Member wallets in an org (**org_admin** or **super_admin**).
+- **POST** `/api/v1/wallets/{wallet_id}/grants` — Assign credits (org admin debits org wallet; super admin mints).
+- **POST** `/api/v1/wallets/{wallet_id}/cap` — Set or clear monthly spend cap.
+- **POST** `/api/v1/wallets/{wallet_id}/adjust` — Super-admin balance adjustment (no grant row).
+- **POST** `/api/v1/orgs/{org_id}/business-model` — Set org business model (`internal`, `channel_partner`, `distributor`) — **super_admin** only.
+- **POST** `/api/v1/orgs/{org_id}/commission` — Set commission percentage — **super_admin** only.
+- **POST** `/api/v1/orgs/{org_id}/markup` — Set org markup (reseller pricing) — **org_admin** of reseller org or **super_admin**.
+
+### Earnings (reseller orgs)
+
+- **GET** `/api/v1/earnings/me` — Earnings summary for the caller’s organization when it is a **channel_partner** or **distributor**. Query **`period`**: `day`, `week`, `month`, `year`, or `all` (default `month`).
+- **GET** `/api/v1/earnings/me/breakdown` — Time-bucketed breakdown; same **`period`** query.
+- **GET** `/api/v1/earnings/orgs/{org_id}` — Earnings for any org (**super_admin** only); same **`period`** query.
+
+### Feature flags
+
+- **GET** `/api/v1/feature-flags/me` — Boolean product flags for the current user.
+- **GET** `/api/v1/feature-flags/{user_id}` / **PUT** `/api/v1/feature-flags/{user_id}` — Read or update flags for a user when RBAC allows. **`PUT`** accepts **boolean flags only**; legacy per-user **billing markup** fields are not supported (use org **markup** under **Wallets**).
 
 ### Tools and MCP
 

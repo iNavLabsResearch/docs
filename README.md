@@ -1,6 +1,6 @@
 # Kupe AI documentation (Mintlify)
 
-This site includes **Guides** and an **API reference** tab. The API tab uses [`api-reference/kupe-voice-agent.openapi.yaml`](api-reference/kupe-voice-agent.openapi.yaml) for Mintlify’s interactive endpoint layout (method badges, **Try it**, request/response samples). For tools, batches, call logs, billing, and API keys, see the companion guide [`api-reference/platform-rest-apis.mdx`](api-reference/platform-rest-apis.mdx).
+This site includes **Guides** and an **API reference** tab. The API tab uses [`api-reference/kupe-voice-agent.openapi.yaml`](api-reference/kupe-voice-agent.openapi.yaml) for Mintlify’s interactive endpoint layout (method badges, **Try it**, request/response samples). For tools, batches, call logs, **billing (usage and credit summary)**, **wallets (credits and ledger)**, **earnings (reseller orgs)**, and API keys, see the companion guide [`api-reference/platform-rest-apis.mdx`](api-reference/platform-rest-apis.mdx).
 
 Use the starter kit to get your docs deployed and ready to customize.
 
