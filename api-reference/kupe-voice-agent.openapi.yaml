@@ -276,8 +276,10 @@ components:
     CreateAgentRequest:
       type: object
       description: >
-        Body for **`PUT /api/v1/agents/{agent_id}`** (partial update). Same nested shape as a full agent payload;
-        omitted keys are left unchanged. Not used for `POST /api/v1/agents/simple`.
+        Body for **`POST /api/v1/agents`** (full create) and **`PUT /api/v1/agents/{agent_id}`** (partial update).
+        Same nested shape as a full agent payload; omitted keys are left unchanged on PUT.
+        Welcome line: set **`agent.first_response_message`** or **`agent.welcome_message`** (alias).
+        Not used for `POST /api/v1/agents/simple`.
       required: [agent]
       properties:
         agent:
@@ -295,6 +297,14 @@ components:
             recording_enabled:
               type: boolean
               default: true
+            first_response_message:
+              type: string
+              description: >
+                Welcome message: first thing the agent says when a call or session starts.
+                Same as `welcome_message` (both accepted on create/update).
+            welcome_message:
+              type: string
+              description: Alias for `first_response_message` (use one or the other).
         agent_model_config:
           $ref: "#/components/schemas/ModelConfig"
         tts_config:
@@ -900,6 +910,7 @@ paths:
             example:
               agent:
                 name: "Renamed Agent"
+                first_response_message: "Hi, thanks for calling Acme. How can I help today?"
               agent_model_config:
                 model_name: "gpt-4.1-mini"
                 system_prompt: "Updated prompt."

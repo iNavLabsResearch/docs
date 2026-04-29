@@ -102,6 +102,8 @@ Use **`POST /api/v1/agents/simple`** with `{ "name": "...", "description": "..."
 
 To set catalog models and voice, call **`PUT /api/v1/agents/{agent_id}`** with a partial body (same nested keys as in the OpenAPI **`CreateAgentRequest`** schema: `agent`, `agent_model_config`, `tts_config`, `transcriber_config`, `agent_specific_config`, …). **VAD** and **inferencing** stay on platform defaults unless you change them in advanced flows.
 
+Set the **welcome message** (first thing the agent says) under **`agent.first_response_message`**, or send the same value as **`agent.welcome_message`** (alias). `GET /api/v1/agents/{agent_id}` returns it on **`agent.first_response_message`**.
+
 **Catalog strings:** use **`model_name`**, **`tts_model_name`**, **`transcriber_model_name`** (legacy `*_provider_id` / STT **`provider_id`** still work). See [Model providers](/assistants/model-providers) and [Supported models & providers](/supported-models).
 
 ### Create simple agent (defaults only)
@@ -114,7 +116,7 @@ Body: `{ "name": "...", "description": "..." }` — fastest path when defaults a
 
 `PUT /api/v1/agents/{agent_id}`
 
-Body: `AgentUpdateRequest` (partial fields supported). Active agents reject config changes unless `force_update=true` query flag is used where supported.
+Body: `AgentUpdateRequest` (partial fields supported). Active agents reject config changes unless `force_update=true` query flag is used where supported. Include `agent: { "first_response_message": "..." }` or `agent: { "welcome_message": "..." }` to update the welcome line only.
 
 ### Delete agent
 
