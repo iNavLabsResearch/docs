@@ -398,6 +398,7 @@ components:
         auto_terminate_call:
           type: boolean
           default: false
+          description: Backend key for auto call-cut behavior (frontend alias: `autoTerminate`).
         caller_gender_detection_enabled:
           type: boolean
           default: true

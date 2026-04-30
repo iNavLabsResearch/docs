@@ -102,6 +102,8 @@ Use **`POST /api/v1/agents/simple`** with `{ "name": "...", "description": "..."
 
 To set catalog models and voice, call **`PUT /api/v1/agents/{agent_id}`** with a partial body (same nested keys as in the OpenAPI **`CreateAgentRequest`** schema: `agent`, `agent_model_config`, `tts_config`, `transcriber_config`, `agent_specific_config`, …). **VAD** and **inferencing** stay on platform defaults unless you change them in advanced flows.
 
+Advanced behavior supports an auto-terminate flag in `agent_specific_config`: use `auto_terminate_call` (backend key). Dashboard/frontend may also refer to it as `autoTerminate`; both mean the same behavior (agent can invoke call cut/hangup automatically when needed).
+
 Set the **welcome message** (first thing the agent says) under **`agent.first_response_message`**, or send the same value as **`agent.welcome_message`** (alias). `GET /api/v1/agents/{agent_id}` returns it on **`agent.first_response_message`**.
 
 **Catalog strings:** use **`model_name`**, **`tts_model_name`**, **`transcriber_model_name`** (legacy `*_provider_id` / STT **`provider_id`** still work). See [Model providers](/assistants/model-providers) and [Supported models & providers](/supported-models).
