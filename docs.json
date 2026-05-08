@@ -50,15 +50,6 @@
           "api-reference/platform-rest-apis",
           "voice-agent-api",
           "supported-models"
-        ],
-        "groups": [
-          {
-            "group": "Voice Agent API",
-            "openapi": {
-              "source": "api-reference/kupe-voice-agent.openapi.yaml",
-              "directory": "api-reference/voice-agent"
-            }
-          }
         ]
       }
     ],
@@ -66,6 +57,7 @@
       "anchors": []
     }
   },
+  "openapi": "api-reference/kupe-voice-agent.openapi.yaml",
   "logo": {
     "light": "/logo/light.png",
     "dark": "/logo/dark.png"
