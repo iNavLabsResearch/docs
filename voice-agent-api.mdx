@@ -54,6 +54,7 @@ Your integration checklist maps to Kupe as follows.
 | **transcriber** | `transcriber_config` (`transcriber_model_name`, `language`) — legacy `provider_id` still accepted; pipeline STT model id comes from the catalog row |
 | **model** | `agent_model_config` (`model_name`, …) — legacy `model_provider_id` still accepted |
 | **voice** | `tts_config` (`tts_model_name`, optional `language`, `voice_name`, `voice_parameters`) — legacy `tts_provider_id` still accepted |
+| **behavior / timeouts / transfer** | `agent_specific_config` on **`POST /api/v1/agents`** or **`PUT /api/v1/agents/{agent_id}`** (see [Agent-specific configuration](#agent-specific-configuration)) |
 | **extracted_variables** | Configure **Post analysis** (structured output / HTTP tool) on the agent in the dashboard; see [Webhooks](#5-webhooks-post-call) |
 | **context_params** | Passed at call time via your own telephony URL parameters or automation; the stock `create_call` query API does not accept a JSON body—extend or wrap if you need a single JSON contract |
 
@@ -96,29 +97,85 @@ Query: `page`, `page_size`, optional `name_search`.
 
 Returns `CompleteAgentResponse`: `agent` plus `configurations` (`model_config`, `tts_config`, `transcriber_config`, `vad_config`, `inferencing_config`, `tools`, `agent_specific_config`).
 
-### Create agent (defaults, then configure)
+### Create agent
 
-Use **`POST /api/v1/agents/simple`** with `{ "name": "...", "description": "..." }` to create an agent with platform defaults for STT, TTS, LLM, and VAD. The response includes **`agent.id`**.
+Two create paths:
 
-To set catalog models and voice, call **`PUT /api/v1/agents/{agent_id}`** with a partial body (same nested keys as in the OpenAPI **`CreateAgentRequest`** schema: `agent`, `agent_model_config`, `tts_config`, `transcriber_config`, `agent_specific_config`, …). **VAD** and **inferencing** stay on platform defaults unless you change them in advanced flows.
+| Path | When to use |
+|------|-------------|
+| **`POST /api/v1/agents/simple`** | Name (+ optional description) only; platform defaults for STT, TTS, LLM, VAD, and **`agent_specific_config`**. |
+| **`POST /api/v1/agents`** | Full create in one shot: `agent`, optional `agent_model_config`, `tts_config`, `transcriber_config`, **`agent_specific_config`**, and tools. |
 
-Advanced behavior supports an auto-terminate flag in `agent_specific_config`: use `auto_terminate_call` (backend key). Dashboard/frontend may also refer to it as `autoTerminate`; both mean the same behavior (agent can invoke call cut/hangup automatically when needed).
+After **`POST /api/v1/agents/simple`**, configure models, voice, and behavior with **`PUT /api/v1/agents/{agent_id}`** (partial body). **VAD** and **inferencing** stay on platform defaults unless you change them in advanced flows.
 
-Set the **welcome message** (first thing the agent says) under **`agent.first_response_message`**, or send the same value as **`agent.welcome_message`** (alias). `GET /api/v1/agents/{agent_id}` returns it on **`agent.first_response_message`**.
+Set the **welcome message** under **`agent.first_response_message`**, or **`agent.welcome_message`** (alias). `GET /api/v1/agents/{agent_id}` returns it on **`agent.first_response_message`**.
 
 **Catalog strings:** use **`model_name`**, **`tts_model_name`**, **`transcriber_model_name`** (legacy `*_provider_id` / STT **`provider_id`** still work). See [Model providers](/assistants/model-providers) and [Supported models & providers](/supported-models).
+
+### Agent-specific configuration
+
+Per-agent runtime behavior lives in **`agent_specific_config`** (stored in `agent_specific_configs.configuration`). You can set it on:
+
+- **`POST /api/v1/agents`** — include `agent_specific_config` in the create body (omitted keys use platform defaults).
+- **`PUT /api/v1/agents/{agent_id}`** — send only the keys to change; the API **merges** them onto the stored config.
+
+Read current values from **`GET /api/v1/agents/{agent_id}`** → **`configurations.agent_specific_config`**.
+
+| Key | Type | Purpose |
+|-----|------|---------|
+| `session_timeout` | integer (seconds) | Max session length before auto disconnect (default `180`). |
+| `end_of_speech_timeout` | number | Seconds after the user stops speaking before the pipeline processes (default `1.5`). |
+| `llm_conversation_stop_enabled` | boolean | When true, the LLM can end the call when the user wants to stop (`terminate_call`). |
+| `auto_terminate_call` | boolean | When true, the agent may hang up via `terminate_call` (dashboard alias **`autoTerminate`**). |
+| `caller_gender_detection_enabled` | boolean | Detect caller gender for prompt context (default true). |
+| `max_output_tokens` | integer | Cap LLM output tokens per turn. |
+| `timezone` | string | IANA timezone for date/time in prompts (e.g. `Asia/Kolkata`). |
+| `inbound_transfer_routes` | array | Conditional PSTN transfers (`route_id`, `condition_when_to_transfer`, `phone_number`, …). |
+| `inbound_transfer_call_number` | string | Legacy single transfer target (digits only); use routes when you need multiple targets. |
+| `inbound_transfer_trigger_condition` | string | Legacy NL condition for the single-number transfer. |
+| `conversation_stop_words` | string[] | **Legacy — ignored at runtime.** Use `llm_conversation_stop_enabled` instead. |
+
+**Example — create with behavior**
+
+```json
+POST /api/v1/agents
+{
+  "agent": { "name": "Support", "first_response_message": "Hello, how can I help?" },
+  "agent_model_config": { "model_name": "gpt-4.1-mini", "system_prompt": "You are support." },
+  "agent_specific_config": {
+    "session_timeout": 300,
+    "auto_terminate_call": true,
+    "llm_conversation_stop_enabled": true,
+    "timezone": "Asia/Kolkata"
+  }
+}
+```
+
+**Example — update behavior only**
+
+```json
+PUT /api/v1/agents/{agent_id}
+{
+  "agent_specific_config": {
+    "auto_terminate_call": true,
+    "end_of_speech_timeout": 1.2
+  }
+}
+```
+
+OpenAPI schema: **`AgentSpecificConfigInput`** in the [API reference](/api-reference/introduction).
 
 ### Create simple agent (defaults only)
 
 `POST /api/v1/agents/simple`
 
-Body: `{ "name": "...", "description": "..." }` — fastest path when defaults are acceptable end-to-end.
+Body: `{ "name": "...", "description": "..." }` — fastest path when defaults are acceptable end-to-end. Set **`agent_specific_config`** afterward with **`PUT /api/v1/agents/{agent_id}`**.
 
 ### Update agent
 
 `PUT /api/v1/agents/{agent_id}`
 
-Body: `AgentUpdateRequest` (partial fields supported). Active agents reject config changes unless `force_update=true` query flag is used where supported. Include `agent: { "first_response_message": "..." }` or `agent: { "welcome_message": "..." }` to update the welcome line only.
+Body: **`AgentUpdateRequest`** (partial fields). Active agents reject config changes unless `force_update=true` where supported. Include `agent: { "first_response_message": "..." }` for the welcome line only, or `agent_specific_config` for behavior-only updates (merged).
 
 ### Delete agent
 
