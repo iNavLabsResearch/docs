@@ -69,21 +69,87 @@ Base path: **`/api/v1/agents/{agent_id}`**
 
 ---
 
-## Outbound — batches, numbers, campaign launch
+## Outbound — batch campaigns (end-to-end API)
 
 Base path: **`/api/v1/batch-call`**
 
+Requires the **outbound** feature flag on your account. Authenticate with **`x-api-key`** or **Bearer** on every route below (except Twilio **`/status-callback`**, which is called by the carrier).
+
+### Prerequisites
+
+1. **`GET /api/v1/phone`** — list provisioned lines; note each row’s **`id`** (`caller_phone_id`).
+2. **`GET /api/v1/agents`** — note your agent **`id`**, or use a workflow id instead.
+3. In the agent system prompt, use variables like `{{name}}` that match **`variable_names`** on the batch.
+
+### End-to-end flow
+
+| Step | Method | Path | Purpose |
+|------|--------|------|---------|
+| 1 | `POST` | `/create` | Create batch: `agent_id` **or** `workflow_id`, `caller_phone_id`, `batch_name`, `variable_names`, `batch_size`. |
+| 2a | `POST` | `/upload-json/{batch_id}` | Add targets as JSON (`records[]` with `to_phonenumber` + variable keys). |
+| 2b | `POST` | `/upload/{batch_id}` | Or upload CSV (`multipart/form-data`, column `to_phonenumber` + variables). |
+| 2c | `POST` | `/{batch_id}/data/upsert` | Or upsert rows one-by-one / in bulk (`items[]` with optional `id` to update). |
+| 3 | `GET` | `/{batch_id}/data` | Verify recipients (optional `?status=not_started`). |
+| 4 | `POST` | `/start/{batch_id}` | **Launch campaign** — dials up to `batch_size` numbers at a time. |
+| 5 | `GET` | `/{batch_id}/status` | Poll batch **`status`** + **`status_counts`** (not_started, calling, completed, failed, no_answer). |
+| 5 | `GET` | `/{batch_id}/data` | Poll per-number status and `error_message`. |
+
+**Batch-level status:** `not_started` → `in_progress` (after launch) → `completed` (all rows terminal).
+
+**Recipient status:** `not_started` → `calling` → `completed` | `failed` | `no_answer`.
+
+### All routes
+
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/create` | Create a batch (agent/workflow, variable names, batch name, etc.). |
-| `POST` | `/upload/{batch_id}` | Upload CSV with `to_phonenumber` and variable columns. |
-| `POST` | `/{batch_id}/data/upsert` | Add or update rows via JSON (numbers + variables). |
-| `GET` | `/{batch_id}/data` | List batch rows (optional `?status=` filter). |
-| `GET` | `/browse` | Browse batches (filters/query as implemented by the API). |
-| `GET` | `/user/{user_id}` | List batches for a user. |
-| `GET` | `/{batch_id}` | Get batch metadata. |
-| `POST` | `/start/{batch_id}` | **Launch campaign** — start dialing for queued numbers. |
-| `POST` | `/status-callback` | Provider status webhook (configured with your telephony provider). |
+| `POST` | `/create` | Create batch (`user_id` optional — defaults to authenticated user). |
+| `GET` | `/me` | List batches for the authenticated user. |
+| `GET` | `/{batch_id}` | Batch metadata only. |
+| `GET` | `/{batch_id}/status` | Metadata + aggregated status counts. |
+| `GET` | `/{batch_id}/data` | All target numbers (optional `?status=`). |
+| `POST` | `/{batch_id}/data/upsert` | Insert/update recipients (before launch). |
+| `PATCH` | `/{batch_id}/variables` | Update `variable_names` (before launch). |
+| `DELETE` | `/{batch_id}/data/{item_id}` | Remove one recipient (before launch). |
+| `POST` | `/upload/{batch_id}` | CSV upload (`to_phonenumber` + variable columns). |
+| `POST` | `/upload-json/{batch_id}` | JSON bulk upload. |
+| `POST` | `/start/{batch_id}` | Launch campaign. |
+| `DELETE` | `/{batch_id}` | Delete batch and all recipients. |
+| `GET` | `/browse` | Paginated list (super-admin scoping query params). |
+| `GET` | `/user/{user_id}` | List batches for a user (self or super-admin). |
+| `POST` | `/status-callback` | Twilio status webhook (internal; no API key). |
+
+### Example: create → add numbers → launch → poll
+
+```bash
+export KUPE_API_KEY="your_key"
+export BASE="https://api.kupe.in"
+
+# 1. Create batch
+BATCH=$(curl -s -X POST "$BASE/api/v1/batch-call/create" \
+  -H "x-api-key: $KUPE_API_KEY" -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "YOUR_AGENT_UUID",
+    "caller_phone_id": "YOUR_PHONE_NUMBER_UUID",
+    "batch_name": "API demo",
+    "variable_names": ["name"],
+    "batch_size": 3
+  }' | jq -r '.data.id')
+
+# 2. Add targets
+curl -s -X POST "$BASE/api/v1/batch-call/upload-json/$BATCH" \
+  -H "x-api-key: $KUPE_API_KEY" -H "Content-Type: application/json" \
+  -d '{"records":[{"to_phonenumber":"+919876543210","name":"Ada"}]}'
+
+# 3. Launch
+curl -s -X POST "$BASE/api/v1/batch-call/start/$BATCH" \
+  -H "x-api-key: $KUPE_API_KEY"
+
+# 4. Poll progress
+curl -s "$BASE/api/v1/batch-call/$BATCH/status" -H "x-api-key: $KUPE_API_KEY" | jq .
+curl -s "$BASE/api/v1/batch-call/$BATCH/data?status=calling" -H "x-api-key: $KUPE_API_KEY" | jq .
+```
+
+Interactive request/response shapes: **Voice Agent API** OpenAPI tab → **Batch calling** (`kupe-voice-agent.openapi.yaml`).
 
 ---
 

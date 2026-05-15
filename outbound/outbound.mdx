@@ -1,9 +1,57 @@
 ---
 title: "Batch Calling (Outbound)"
-description: "Run outbound call campaigns with agents or workflows."
+description: "Run outbound call campaigns with agents or workflows — dashboard or API."
 ---
 
-## 1. Create a new batch
+## API-only end-to-end
+
+You can run a full outbound campaign without the dashboard using **`/api/v1/batch-call`**. Authenticate with **`x-api-key`** or a dashboard **Bearer** token.
+
+| Step | Endpoint | What it does |
+|------|----------|--------------|
+| 1 | `POST /api/v1/batch-call/create` | Create campaign: attach **agent** (or workflow), **caller phone** (`caller_phone_id` from `GET /api/v1/phone`), **variable_names**, **batch_size**. |
+| 2 | `POST /api/v1/batch-call/upload-json/{batch_id}` | Store target numbers + variables (or use CSV upload / upsert — see [Platform REST APIs](/api-reference/platform-rest-apis)). |
+| 3 | `POST /api/v1/batch-call/start/{batch_id}` | **Launch campaign** — starts dialing in waves of `batch_size`. |
+| 4 | `GET /api/v1/batch-call/{batch_id}/status` | Batch status + counts (`not_started`, `calling`, `completed`, …). |
+| 4 | `GET /api/v1/batch-call/{batch_id}/data` | Per-number status, errors, and variables. |
+
+**Create batch body (minimal):**
+
+```json
+{
+  "agent_id": "YOUR_AGENT_UUID",
+  "caller_phone_id": "YOUR_PHONE_NUMBERS_ROW_UUID",
+  "batch_name": "November follow-ups",
+  "variable_names": ["name", "company_name"],
+  "batch_size": 5
+}
+```
+
+`user_id` is optional — the server uses the API key owner or signed-in user.
+
+**Add targets (JSON):**
+
+```json
+{
+  "records": [
+    {
+      "to_phonenumber": "+919876543210",
+      "name": "Ada",
+      "company_name": "Acme"
+    }
+  ]
+}
+```
+
+Use **`{{name}}`** and **`{{company_name}}`** in the agent system prompt so each call is personalized.
+
+Full route list, curl examples, and OpenAPI schemas: [Platform REST APIs — Outbound](/api-reference/platform-rest-apis) and the **Batch calling** section in the [Voice Agent API](/voice-agent-api) reference.
+
+---
+
+## Dashboard workflow
+
+### 1. Create a new batch
 
 1. **Log in to Kupe AI**  
    Go to [https://app.kupe.in](https://app.kupe.in) and sign in.
@@ -20,11 +68,11 @@ description: "Run outbound call campaigns with agents or workflows."
    * **Phone Number** — The outbound number calls will use (must be connected to your account)
    * **Agent / Workflow** — Choose the Agent or Workflow that will handle each call
    * **Variable Names** — Comma-separated names for variables used in the agent prompt (e.g. `name`, `company_name`, `appointment_time`)
-   * **Batch Size** — Maximum number of contacts to run (can match your CSV size)
+   * **Batch Size** — Maximum concurrent calls per wave while the campaign runs
 
 ---
 
-## 2. Prepare your CSV
+### 2. Prepare your CSV
 
 Your CSV must include:
 
@@ -40,7 +88,7 @@ Tips:
 
 ---
 
-## 3. Upload CSV to the batch
+### 3. Upload CSV to the batch
 
 1. From the Batch Calling list, open the batch you created to go to **Batch Details**.
 2. Click **Upload** and select your CSV.
@@ -51,13 +99,13 @@ Tips:
 
 ---
 
-## 4. Launch the campaign
+### 4. Launch the campaign
 
 When the upload has been processed and the contact count looks correct:
 
 1. Click **Launch Campaign**.
 
-Kupe will schedule and place calls using the chosen Agent or Workflow. Each call uses the variables from the CSV for personalization.
+Kupe will schedule and place calls using the chosen Agent or Workflow. Each call uses the variables from the CSV for personalization. The same action is **`POST /api/v1/batch-call/start/{batch_id}`** when using the API.
 
 ---
 
@@ -66,3 +114,4 @@ Kupe will schedule and place calls using the chosen Agent or Workflow. Each call
 * Use **E.164** phone format (`+<countrycode><number>`).
 * If rows are rejected, download the error report or fix the CSV and re-upload only failed rows.
 * Test with a small **batch size** (e.g. 10) first to verify agent behavior.
+* Poll **`GET .../{batch_id}/status`** after launch to track campaign progress.

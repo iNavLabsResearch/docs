@@ -1,4 +1,15 @@
-nav-logo img {
-  height: 5rem;
-  width: auto;
+/* Kupe navbar logo — top left */
+nav-logo img,
+a[aria-label="logo"] img,
+header img[alt*="logo" i] {
+  height: 2rem !important;
+  width: auto !important;
+  max-height: 2rem !important;
+}
+
+/* Hide default Mintlify wordmark / powered-by when the platform injects it */
+footer a[href*="mintlify.com"],
+footer img[alt*="Mintlify" i],
+footer img[src*="mintlify" i] {
+  display: none !important;
 }

@@ -20,6 +20,10 @@ info:
     | `GET /api/v1/providers/all` | `https://api.kupe.in/api/v1/providers/all` |
     | `GET /api/v1/tts-voices` | `https://api.kupe.in/api/v1/tts-voices` |
     | `POST /api/call/create_call` | `https://api.kupe.in/api/call/create_call` |
+    | `POST /api/v1/batch-call/create` | Create outbound batch campaign |
+    | `POST /api/v1/batch-call/upload-json/{batch_id}` | Add target numbers (JSON) |
+    | `POST /api/v1/batch-call/start/{batch_id}` | Launch batch campaign |
+    | `GET /api/v1/batch-call/{batch_id}/status` | Batch + per-number status counts |
     | `POST /api/v1/files/upload` | `https://api.kupe.in/api/v1/files/upload` |
     | `GET /api/v1/files/supported-formats` | `https://api.kupe.in/api/v1/files/supported-formats` |
     | `GET /api/v1/files/user/me` | `https://api.kupe.in/api/v1/files/user/me` |
@@ -84,6 +88,11 @@ tags:
     description: >
       Initiate outbound PSTN calls (`POST /api/call/create_call`). Authenticate with **`x-api-key`** or **Bearer**;
       user is inferred from auth only; response includes `request_id` and `call_session_id`.
+  - name: "Batch calling"
+    description: >
+      Outbound **campaigns**: create a batch (agent + caller line), upload or upsert target numbers with template
+      variables, launch dialing in waves (`batch_size`), and poll status per recipient and for the whole batch.
+      Base path **`/api/v1/batch-call`**. Requires the **outbound** feature flag on your account.
   - name: "Knowledge base"
     description: Files, agent–file mappings, and semantic or hybrid RAG search.
   - name: "Call logs"
@@ -272,6 +281,147 @@ components:
         detail:
           type: string
           description: Human-readable failure reason (no raw carrier payloads).
+
+    CreateBatchRequest:
+      type: object
+      required: [caller_phone_id, batch_name]
+      description: >
+        Create an outbound batch campaign. Send exactly one of **`agent_id`** or **`workflow_id`**.
+        **`caller_phone_id`** is the `phone_numbers.id` row used as the outbound line (`GET /api/v1/phone`).
+        **`user_id`** is optional — defaults to the API key owner or Bearer session user.
+      properties:
+        agent_id:
+          type: string
+          format: uuid
+          nullable: true
+        workflow_id:
+          type: string
+          format: uuid
+          nullable: true
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+        caller_phone_id:
+          type: string
+          format: uuid
+          description: Outbound caller line (`phone_numbers.id`).
+        batch_name:
+          type: string
+          example: "November follow-ups"
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          default: not_started
+          enum: [not_started, in_progress, completed]
+        variable_names:
+          type: array
+          items:
+            type: string
+          description: Template variable names substituted in the agent system prompt (`{{name}}`, etc.).
+          example: ["name", "company_name"]
+        batch_size:
+          type: integer
+          minimum: 1
+          default: 1
+          description: Max concurrent dials per wave while the campaign runs.
+
+    BatchRecipientRow:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        batch_id:
+          type: string
+          format: uuid
+        to_phonenumber:
+          type: string
+          description: Destination digits (normalized server-side; E.164 recommended in uploads).
+        variable_values:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum: [not_started, calling, completed, failed, no_answer]
+        error_message:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    BatchDataUpsertItem:
+      type: object
+      required: [to_phonenumber]
+      properties:
+        id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Omit to insert; include to update an existing not_started row.
+        to_phonenumber:
+          type: string
+        variable_values:
+          type: object
+          additionalProperties: true
+
+    BatchDataUpsertRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BatchDataUpsertItem"
+
+    UploadBatchDataJsonRequest:
+      type: object
+      required: [records]
+      properties:
+        records:
+          type: array
+          items:
+            type: object
+            required: [to_phonenumber]
+            additionalProperties: true
+            description: Flat rows — `to_phonenumber` plus keys matching `variable_names` on the batch.
+          example:
+            - to_phonenumber: "+919876543210"
+              name: "Ada"
+              company_name: "Acme"
+
+    UpdateBatchVariableNamesRequest:
+      type: object
+      required: [variable_names]
+      properties:
+        variable_names:
+          type: array
+          items:
+            type: string
+
+    BatchStatusCounts:
+      type: object
+      properties:
+        not_started:
+          type: integer
+        calling:
+          type: integer
+        completed:
+          type: integer
+        failed:
+          type: integer
+        no_answer:
+          type: integer
+        total:
+          type: integer
 
     CreateAgentRequest:
       type: object
@@ -1386,6 +1536,291 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/batch-call/create:
+    post:
+      tags: ["Batch calling"]
+      summary: Create batch campaign
+      description: |
+        **Full URL:** `POST https://api.kupe.in/api/v1/batch-call/create`
+
+        Creates a `call_batches` row: links an **agent** or **workflow**, your **caller phone line** (`caller_phone_id`),
+        template **variable_names**, and **batch_size** (concurrent dials per wave).
+
+        **Authentication:** `x-api-key` or Bearer. Owner is inferred from auth unless you pass a matching `user_id`.
+
+        **Next steps:** upload targets (`POST .../upload-json/{batch_id}` or CSV upload), then `POST .../start/{batch_id}`.
+      operationId: createBatchCampaign
+      security:
+        - KupeApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBatchRequest"
+            example:
+              agent_id: "00000000-0000-0000-0000-000000000001"
+              caller_phone_id: "00000000-0000-0000-0000-000000000002"
+              batch_name: "Demo campaign"
+              variable_names: ["name", "company_name"]
+              batch_size: 5
+      responses:
+        "201":
+          description: Batch created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    additionalProperties: true
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/batch-call/upload-json/{batch_id}:
+    post:
+      tags: ["Batch calling"]
+      summary: Add target numbers (JSON)
+      description: |
+        Insert recipient rows into `batch_data`. Each record needs **`to_phonenumber`** and any **variable** columns
+        defined on the batch. Numbers are normalized to digits server-side.
+      operationId: uploadBatchDataJson
+      security:
+        - KupeApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadBatchDataJsonRequest"
+            example:
+              records:
+                - to_phonenumber: "+919876543210"
+                  name: "Ada"
+                  company_name: "Acme"
+      responses:
+        "200":
+          description: Rows inserted (failed rows counted separately)
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "404":
+          description: Batch not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/batch-call/{batch_id}/data/upsert:
+    post:
+      tags: ["Batch calling"]
+      summary: Upsert target numbers
+      description: |
+        Add or update recipients before launch. Include **`id`** to update an existing row; omit **`id`** to insert.
+        Allowed only while the batch and row are **`not_started`**.
+      operationId: upsertBatchData
+      security:
+        - KupeApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchDataUpsertRequest"
+      responses:
+        "200":
+          description: Recipients saved
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/v1/batch-call/{batch_id}/data:
+    get:
+      tags: ["Batch calling"]
+      summary: List target numbers and call statuses
+      description: |
+        Returns all `batch_data` rows for the batch. Optional **`status`** query filters
+        (`not_started`, `calling`, `completed`, `failed`, `no_answer`).
+      operationId: getBatchData
+      security:
+        - KupeApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [not_started, calling, completed, failed, no_answer]
+      responses:
+        "200":
+          description: Recipient list
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/v1/batch-call/{batch_id}/status:
+    get:
+      tags: ["Batch calling"]
+      summary: Batch status and progress counts
+      description: |
+        Returns batch metadata (`call_batches.status`: `not_started`, `in_progress`, `completed`) plus
+        **`status_counts`** for all target numbers in the campaign.
+      operationId: getBatchStatus
+      security:
+        - KupeApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Batch + counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      batch:
+                        type: object
+                        additionalProperties: true
+                      status_counts:
+                        $ref: "#/components/schemas/BatchStatusCounts"
+
+  /api/v1/batch-call/start/{batch_id}:
+    post:
+      tags: ["Batch calling"]
+      summary: Launch batch campaign
+      description: |
+        **Full URL:** `POST https://api.kupe.in/api/v1/batch-call/start/{batch_id}`
+
+        Starts dialing: claims up to **`batch_size`** `not_started` rows, initiates outbound calls, and continues
+        in waves as calls complete. Sets batch status to **`in_progress`**; when all rows finish, status becomes **`completed`**.
+
+        Returns immediately while dialing runs in the background. Poll **`GET .../{batch_id}/status`** or
+        **`GET .../{batch_id}/data`** for per-number progress.
+      operationId: startBatchCampaign
+      security:
+        - KupeApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Campaign start accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "409":
+          description: Batch already has in-flight calls
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/batch-call/me:
+    get:
+      tags: ["Batch calling"]
+      summary: List my batches
+      description: All outbound batches owned by the authenticated user.
+      operationId: listMyBatches
+      security:
+        - KupeApiKey: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Batch list
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/v1/batch-call/{batch_id}:
+    get:
+      tags: ["Batch calling"]
+      summary: Get batch metadata
+      operationId: getBatchMetadata
+      security:
+        - KupeApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Batch metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
   /api/v1/files/upload:
     post:
       tags: ["Knowledge base"]
