@@ -12,6 +12,7 @@ info:
     | `GET /api/v1/phone` | `https://api.kupe.in/api/v1/phone` (all provisioned phone lines) |
     | `POST /api/v1/phone/mapping` | `https://api.kupe.in/api/v1/phone/mapping` (inbound line → agent/workflow) |
     | `GET /api/v1/agents` | `https://api.kupe.in/api/v1/agents` |
+    | `POST /api/v1/agents` | `https://api.kupe.in/api/v1/agents` (full create; optional `agent_specific_config`) |
     | `POST /api/v1/agents/simple` | `https://api.kupe.in/api/v1/agents/simple` |
     | `GET/PUT/DELETE /api/v1/agents/{agent_id}` | `https://api.kupe.in/api/v1/agents/{agent_id}` |
     | `GET /api/v1/providers/model` | `https://api.kupe.in/api/v1/providers/model` |
@@ -426,10 +427,10 @@ components:
     CreateAgentRequest:
       type: object
       description: >
-        Body for **`POST /api/v1/agents`** (full create) and **`PUT /api/v1/agents/{agent_id}`** (partial update).
-        Same nested shape as a full agent payload; omitted keys are left unchanged on PUT.
-        Welcome line: set **`agent.first_response_message`** or **`agent.welcome_message`** (alias).
-        Not used for `POST /api/v1/agents/simple`.
+        Body for **`POST /api/v1/agents`** (full create). Requires **`agent.name`**; all other top-level keys are optional.
+        Set runtime behavior (timeouts, auto hangup, inbound transfer routes) under **`agent_specific_config`** — values are
+        merged onto platform defaults and stored in `agent_specific_configs.configuration` (separate from share/branding info).
+        Welcome line: **`agent.first_response_message`** or **`agent.welcome_message`** (alias). Not used for **`POST /api/v1/agents/simple`**.
       required: [agent]
       properties:
         agent:
@@ -461,6 +462,37 @@ components:
           $ref: "#/components/schemas/TtsConfig"
         transcriber_config:
           $ref: "#/components/schemas/TranscriberConfig"
+        agent_specific_config:
+          $ref: "#/components/schemas/AgentSpecificConfigInput"
+
+    AgentUpdateRequest:
+      type: object
+      description: >
+        Body for **`PUT /api/v1/agents/{agent_id}`** (partial update). Send only the sections you want to change; omitted
+        top-level keys are left unchanged. **`agent_specific_config`** is deep-merged onto the stored configuration (omitted
+        fields keep their current values). Active agents may require `?force_update=true`. See **`AgentSpecificConfigInput`** for all behavior keys.
+      properties:
+        agent:
+          type: object
+          properties:
+            name: {type: string}
+            description: {type: string}
+            is_active: {type: boolean}
+            recording_enabled: {type: boolean}
+            first_response_message:
+              type: string
+              description: Welcome message (alias `welcome_message`).
+            welcome_message:
+              type: string
+              description: Alias for `first_response_message`.
+        agent_model_config:
+          $ref: "#/components/schemas/ModelConfig"
+        tts_config:
+          $ref: "#/components/schemas/TtsConfig"
+        transcriber_config:
+          $ref: "#/components/schemas/TranscriberConfig"
+        vad_config:
+          $ref: "#/components/schemas/VadConfig"
         agent_specific_config:
           $ref: "#/components/schemas/AgentSpecificConfigInput"
 
@@ -528,62 +560,86 @@ components:
             [Model providers](/assistants/model-providers).
           example: "hi-IN"
 
+    InboundTransferRouteItem:
+      type: object
+      description: One PSTN transfer target plus when the model should use it (`transfer_call` with `route_id`).
+      properties:
+        route_id:
+          type: string
+          description: Stable id for `transfer_call` (letters, numbers, underscore; auto-generated if omitted).
+        display_name:
+          type: string
+          description: Optional UI label (not shown to the model).
+        enabled:
+          type: boolean
+          default: true
+          description: When false, route is kept in config but excluded from runtime routing.
+        condition_when_to_transfer:
+          type: string
+          description: Natural-language condition for when this transfer matches the caller's request.
+        phone_number:
+          type: string
+          description: Destination in any common form; stored normalized as digits only.
+
     AgentSpecificConfigInput:
       type: object
       description: >
-        Optional behavior overrides (merged onto platform defaults). Omitted keys keep defaults.
+        Per-agent behavior stored in **`agent_specific_configs.configuration`**. On create (**`POST /api/v1/agents`**) and
+        update (**`PUT /api/v1/agents/{agent_id}`**), send under **`agent_specific_config`**; omitted keys keep platform or
+        existing values (partial PUT merges). Returned on **`GET /api/v1/agents/{agent_id}`** under
+        **`configurations.agent_specific_config`**. Dashboard may use camelCase aliases (e.g. `autoTerminate` → `auto_terminate_call`).
       properties:
         session_timeout:
           type: integer
           minimum: 1
           maximum: 86400
           default: 180
+          description: Session timeout in seconds before auto disconnect.
         end_of_speech_timeout:
           type: number
           minimum: 0
           default: 1.5
+          description: Seconds to wait after the user stops speaking before processing.
+        conversation_stop_words:
+          type: array
+          items: {type: string}
+          description: Legacy; ignored at runtime. Use `llm_conversation_stop_enabled` instead.
         llm_conversation_stop_enabled:
           type: boolean
           default: false
+          description: >
+            When true, extra system instructions are injected and `terminate_call` is available so the LLM can end the call
+            when the user wants to stop.
         auto_terminate_call:
           type: boolean
           default: false
-          description: "Backend key for auto call-cut behavior (frontend alias: autoTerminate)."
+          description: >
+            When true, the agent can invoke the `terminate_call` tool to hang up (dashboard alias `autoTerminate`).
         caller_gender_detection_enabled:
           type: boolean
           default: true
+          description: When true, detect caller voice gender and inject into agent context; set false to disable.
         max_output_tokens:
           type: integer
           minimum: 1
           default: 370
+          description: Maximum output tokens for LLM responses per turn.
         timezone:
           type: string
           default: "Asia/Kolkata"
+          description: IANA timezone for current date/time context in prompts (e.g. `Asia/Kolkata`, `America/New_York`).
         inbound_transfer_call_number:
           type: string
-          description: Legacy single PSTN target (digits). Prefer `inbound_transfer_routes`.
+          description: >
+            Legacy single PSTN target, digits only (no `+`). Used when `inbound_transfer_routes` is empty. Prefer routes array.
         inbound_transfer_trigger_condition:
           type: string
-          description: Legacy NL condition for the single-number transfer.
+          description: Legacy NL condition for the single-number transfer; ignored when `inbound_transfer_routes` is set.
         inbound_transfer_routes:
           type: array
-          description: Multiple conditional PSTN transfer targets (`transfer_call` with `route_id`).
+          description: Multiple conditional PSTN transfer targets; enables `transfer_call` with `route_id`.
           items:
-            type: object
-            properties:
-              route_id:
-                type: string
-                description: Stable id for `transfer_call` (optional; auto if omitted).
-              display_name:
-                type: string
-              enabled:
-                type: boolean
-                default: true
-              condition_when_to_transfer:
-                type: string
-                description: When the model should offer this transfer.
-              phone_number:
-                type: string
+            $ref: "#/components/schemas/InboundTransferRouteItem"
 
     VadConfig:
       type: object
@@ -892,6 +948,75 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
   /api/v1/agents:
+    post:
+      tags: ["Agent Management"]
+      summary: Create agent (full)
+      description: |
+        **Full URL:** `POST https://api.kupe.in/api/v1/agents`
+
+        Create an agent and its configurations in one request (LLM, STT, TTS, optional tools, and **`agent_specific_config`**).
+        Platform defaults apply for any omitted section (including VAD / inferencing). For a name-only create with all defaults,
+        use **`POST /api/v1/agents/simple`** instead.
+
+        **`agent_specific_config`** is optional on create; send only the behavior keys you need (timeouts, `auto_terminate_call`,
+        inbound transfer routes, etc.). Omitted keys use platform defaults.
+      operationId: createAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentRequest"
+            example:
+              agent:
+                name: "Support Voice Agent"
+                first_response_message: "Hi, thanks for calling. How can I help?"
+              agent_model_config:
+                model_name: "gpt-4.1-mini"
+                system_prompt: "You are a concise billing assistant."
+              transcriber_config:
+                transcriber_model_name: "saarika:2.5"
+                language: "hi-IN"
+              tts_config:
+                tts_model_name: "bulbul:v2"
+                language: "hi-IN"
+                voice_name: "Anushka"
+              agent_specific_config:
+                session_timeout: 300
+                auto_terminate_call: true
+                llm_conversation_stop_enabled: true
+                timezone: "Asia/Kolkata"
+      responses:
+        "201":
+          description: Created — returns `CreateAgentResponse` (`agent.id` is **agent_id**)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAgentResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "401":
+          description: Missing API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
     get:
       tags: ["Agent Management"]
       summary: List agents
@@ -1046,7 +1171,9 @@ paths:
       description: |
         **Full URL:** `PUT https://api.kupe.in/api/v1/agents/{agent_id}` (optional `?force_update=true`)
 
-        Send partial `AgentUpdateRequest` fields. Active agents may require `force_update=true` query on dashboard flows.
+        Send partial **`AgentUpdateRequest`** fields. Active agents may require `force_update=true` on dashboard flows.
+        To change behavior only, send **`agent_specific_config`** with the keys to update — values are merged onto the stored
+        configuration (other keys are unchanged).
       operationId: updateAgent
       parameters:
         - name: force_update
@@ -1057,7 +1184,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateAgentRequest"
+              $ref: "#/components/schemas/AgentUpdateRequest"
             example:
               agent:
                 name: "Renamed Agent"
@@ -1065,6 +1192,15 @@ paths:
               agent_model_config:
                 model_name: "gpt-4.1-mini"
                 system_prompt: "Updated prompt."
+              agent_specific_config:
+                auto_terminate_call: true
+                end_of_speech_timeout: 1.2
+                inbound_transfer_routes:
+                  - route_id: "billing"
+                    display_name: "Billing desk"
+                    enabled: true
+                    condition_when_to_transfer: "Caller asks for a human or billing specialist."
+                    phone_number: "+919876543210"
       responses:
         "200":
           description: Updated agent returned

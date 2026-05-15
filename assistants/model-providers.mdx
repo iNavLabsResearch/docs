@@ -15,7 +15,7 @@ With your **`x-api-key`**:
 | TTS | `GET https://api.kupe.in/api/v1/providers/tts` |
 | STT | `GET https://api.kupe.in/api/v1/providers/stt` |
 
-Each row includes fields such as `model_name`, `provider_name`, `supported_languages`, and `id`. **Agent update** accepts preferred keys **`agent_model_config.model_name`**, **`tts_config.tts_model_name`**, **`transcriber_config.transcriber_model_name`** (legacy `*_provider_id` fields are equivalent) and resolves them to internal UUIDs before saving.
+Each row includes fields such as `model_name`, `provider_name`, `supported_languages`, and `id`. **Agent create/update** accepts preferred keys **`agent_model_config.model_name`**, **`tts_config.tts_model_name`**, **`transcriber_config.transcriber_model_name`** (legacy `*_provider_id` fields are equivalent) and resolves them to internal UUIDs before saving. Per-agent behavior (timeouts, auto hangup, inbound transfer routes) goes in **`agent_specific_config`** on **`POST /api/v1/agents`** or **`PUT /api/v1/agents/{agent_id}`** — see [Voice Agent HTTP API](/voice-agent-api#agent-specific-configuration).
 
 See also: [Supported models & providers](/supported-models) (static tables and model names) and the **Voice Agent API** in the [API reference](/api-reference/introduction).
 

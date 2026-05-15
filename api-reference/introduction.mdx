@@ -34,9 +34,10 @@ When you open **Try it** and click **Send**, the playground shows the **real HTT
 ### Agent management
 
 - **GET** `/api/v1/agents` — List agents (array or paginated object).
-- **POST** `/api/v1/agents/simple` — Create agent with platform defaults.
-- **GET** `/api/v1/agents/{agent_id}` — Get one agent with configs.
-- **PUT** `/api/v1/agents/{agent_id}` — Update agent.
+- **POST** `/api/v1/agents` — Full create (agent + configs + optional **`agent_specific_config`** in one request).
+- **POST** `/api/v1/agents/simple` — Create agent with platform defaults (name/description only).
+- **GET** `/api/v1/agents/{agent_id}` — Get one agent with configs (includes **`configurations.agent_specific_config`**).
+- **PUT** `/api/v1/agents/{agent_id}` — Partial update; **`agent_specific_config`** is deep-merged.
 - **DELETE** `/api/v1/agents/{agent_id}` — Delete agent.
 
 ### Providers
@@ -173,6 +174,7 @@ Your key is bound to a **user** in Kupe. For **`POST /api/call/create_call`**, *
 | **prompt** | `agent_model_config.system_prompt` |
 | **call_type** | Inbound: phone → agent in [Dashboard](https://app.kupe.in). Outbound: `create_call` + `agent_id`. |
 | **transcriber / model / voice** | `transcriber_config`, `agent_model_config`, `tts_config` on create/update agent. |
+| **timeouts / auto hangup / transfer** | `agent_specific_config` on **`POST /api/v1/agents`** or **`PUT /api/v1/agents/{agent_id}`** (`auto_terminate_call`, `session_timeout`, `inbound_transfer_routes`, …). |
 | **extracted_variables** | Post-analysis structured output / HTTP tool (see **Webhooks**). |
 | **context_params** | Not a single global JSON body on `create_call` yet; pass via telephony or extend backend if needed. |
 
