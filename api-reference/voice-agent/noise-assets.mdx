@@ -1,0 +1,126 @@
+---
+title: List available background noise assets
+openapi: 'GET /api/v1/noise-assets'
+---
+
+Outbound calls can mix a continuous **ambient track** under agent speech (office, café, etc.). Use this endpoint to list every WAV the platform exposes, then store the chosen asset on the agent.
+
+## Authentication
+
+Send **`x-api-key`** or **`Authorization: Bearer`** (same as other `/api/v1/**` routes).
+
+```http
+GET https://api.kupe.in/api/v1/noise-assets
+x-api-key: YOUR_KUPE_API_KEY
+```
+
+## Response fields
+
+| Field | Description |
+|-------|-------------|
+| `id` | Asset identifier — pass to **`agent_specific_config.background_noise_id`** (often the filename, e.g. `office_noise.wav`). |
+| `name` | Display label (filename without `.wav`). |
+
+### Example response
+
+```json
+[
+  {
+    "id": "office_noise.wav",
+    "name": "office_noise"
+  },
+  {
+    "id": "office_ambience_sound.wav",
+    "name": "office_ambience_sound"
+  }
+]
+```
+
+An empty array `[]` means no noise files are deployed on the server yet.
+
+## Enable background noise on an agent
+
+1. Call **`GET /api/v1/noise-assets`** and note the **`id`** you want.
+2. Create or update the agent with that id (and optional volume):
+
+```json
+PUT /api/v1/agents/{agent_id}
+{
+  "agent_specific_config": {
+    "background_noise_id": "office.wav",
+    "background_noise_volume": 40
+  }
+}
+```
+
+| Key | Type | Notes |
+|-----|------|-------|
+| `background_noise_id` | string | **`id`** from this endpoint. |
+| `background_noise_volume` | integer (0–100) | Ambience gain. `100` = full, `0` = mute. Default `100`. |
+
+Background noise is mixed on the **outbound WebSocket** path (agent TTS plays over the ambient track). It is separate from **inbound** noise reduction (`agent.apply_noise_reduction` + `noise_cancellation_strength`).
+
+## No background voice (disable ambience)
+
+Use any of these approaches so the caller hears **only** the agent, with no room tone:
+
+<Steps>
+  <Step title="Do not set background_noise_id">
+    On **create** (`POST /api/v1/agents`), omit `background_noise_id` from `agent_specific_config`.
+
+    On **update**, clear an existing value:
+
+    ```json
+    PUT /api/v1/agents/{agent_id}
+    {
+      "agent_specific_config": {
+        "background_noise_id": null
+      }
+    }
+    ```
+
+    An empty string also clears the selection: `"background_noise_id": ""`.
+  </Step>
+  <Step title="Verify on GET">
+    `GET /api/v1/agents/{agent_id}` should show **`background_noise_id`** missing, `null`, or `""` under **`configurations.agent_specific_config`**.
+  </Step>
+  <Step title="Optional: mute without changing the asset id">
+    If you keep an id but want silence, set volume to zero:
+
+    ```json
+    "agent_specific_config": {
+      "background_noise_id": "office.wav",
+      "background_noise_volume": 0
+    }
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  In the Kupe dashboard, choose **None** under **Background noise asset** — that saves an empty `background_noise_id`, same as the API clear step above.
+</Note>
+
+## Typical workflow
+
+```bash
+# 1) List assets
+curl -s https://api.kupe.in/api/v1/noise-assets \
+  -H "x-api-key: YOUR_KUPE_API_KEY"
+
+# 2a) Assign ambience
+curl -s -X PUT "https://api.kupe.in/api/v1/agents/AGENT_UUID" \
+  -H "x-api-key: YOUR_KUPE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"agent_specific_config":{"background_noise_id":"office.wav","background_noise_volume":35}}'
+
+# 2b) Or disable (no background voice)
+curl -s -X PUT "https://api.kupe.in/api/v1/agents/AGENT_UUID" \
+  -H "x-api-key: YOUR_KUPE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"agent_specific_config":{"background_noise_id":null}}'
+```
+
+## Related
+
+- Narrative guide: [Voice Agent HTTP API — List background noise assets](/voice-agent-api#list-background-noise-assets)
+- Agent behavior keys: **`AgentSpecificConfigInput`** (`background_noise_id`, `background_noise_volume`, `noise_cancellation_strength`, …)

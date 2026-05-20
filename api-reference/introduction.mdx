@@ -9,7 +9,7 @@ Use this **API reference** tab to explore every Voice Agent endpoint with Mintli
 
 The live API is served at **`https://api.kupe.in`**. The OpenAPI source for this tab is **`api-reference/kupe-voice-agent.openapi.yaml`** in the docs repo.
 
-Use the **left sidebar** (OpenAPI tag groups, including **Service**, **Current user**, **Incoming calls**, **Call logs**, **Billing and usage**, **Wallets**, **Earnings**, **Tools and MCP**, **Post-call analysis**, **API keys**, then **Agent Management**, **Providers**, **Outbound calls**, **Knowledge base**, **Webhooks**) to open each operation. Every page includes **Try it**, request parameters, and response **schemas**. Tag names avoid `&` so Mintlify can render every group reliably.
+Use the **left sidebar** (OpenAPI tag groups, including **Service**, **Current user**, **Incoming calls**, **Call logs**, **Billing and usage**, **Wallets**, **Earnings**, **Tools and MCP**, **Post-call analysis**, **API keys**, then **Agent Management**, **Providers**, **Noise Assets**, **Outbound calls**, **Knowledge base**, **Webhooks**) to open each operation. Every page includes **Try it**, request parameters, and response **schemas**. Tag names avoid `&` so Mintlify can render every group reliably.
 
 For narrative tables (batches, post-analysis rules, etc.), see **[Platform REST APIs](./platform-rest-apis)**.
 
@@ -48,6 +48,7 @@ When you open **Try it** and click **Send**, the playground shows the **real HTT
 - **GET** `/api/v1/providers/vad` — VAD catalog.
 - **GET** `/api/v1/providers/all` — All provider tables.
 - **GET** `/api/v1/tts-voices` — TTS voice rows (`voice_name`).
+- **GET** `/api/v1/noise-assets` — Background noise WAV catalog for **`agent_specific_config.background_noise_id`**.
 
 ### Outbound calls
 
@@ -174,7 +175,9 @@ Your key is bound to a **user** in Kupe. For **`POST /api/call/create_call`**, *
 | **prompt** | `agent_model_config.system_prompt` |
 | **call_type** | Inbound: phone → agent in [Dashboard](https://app.kupe.in). Outbound: `create_call` + `agent_id`. |
 | **transcriber / model / voice** | `transcriber_config`, `agent_model_config`, `tts_config` on create/update agent. |
-| **timeouts / auto hangup / transfer** | `agent_specific_config` on **`POST /api/v1/agents`** or **`PUT /api/v1/agents/{agent_id}`** (`auto_terminate_call`, `session_timeout`, `inbound_transfer_routes`, …). |
+| **timeouts / auto hangup / transfer** | `agent_specific_config` on **`POST /api/v1/agents`** or **`PUT /api/v1/agents/{agent_id}`** (`auto_terminate_call`, `session_timeout`, `inbound_transfer_routes`, `time_to_cut`, …). |
+| **inbound noise reduction** | `agent.apply_noise_reduction` + `noise_cancellation_strength` in `agent_specific_config`. |
+| **outbound background noise** | **`GET /api/v1/noise-assets`** → `background_noise_id` (+ optional `background_noise_volume`). |
 | **extracted_variables** | Post-analysis structured output / HTTP tool (see **Webhooks**). |
 | **context_params** | Not a single global JSON body on `create_call` yet; pass via telephony or extend backend if needed. |
 

@@ -20,6 +20,7 @@ info:
     | `GET /api/v1/providers/stt` | `https://api.kupe.in/api/v1/providers/stt` |
     | `GET /api/v1/providers/all` | `https://api.kupe.in/api/v1/providers/all` |
     | `GET /api/v1/tts-voices` | `https://api.kupe.in/api/v1/tts-voices` |
+    | `GET /api/v1/noise-assets` | `https://api.kupe.in/api/v1/noise-assets` (background noise catalog) |
     | `POST /api/call/create_call` | `https://api.kupe.in/api/call/create_call` |
     | `POST /api/v1/batch-call/create` | Create outbound batch campaign |
     | `POST /api/v1/batch-call/upload-json/{batch_id}` | Add target numbers (JSON) |
@@ -77,6 +78,10 @@ tags:
     description: List, create (defaults), read, update, and delete voice agents.
   - name: Providers
     description: LLM, TTS, and STT catalogs plus TTS voice rows (`GET /api/v1/tts-voices`).
+  - name: "Noise Assets"
+    description: >
+      Catalog of outbound **background noise** WAV assets (`GET /api/v1/noise-assets`). Use each row's **`id`**
+      as **`agent_specific_config.background_noise_id`** when creating or updating an agent.
   - name: "Phone numbers"
     description: >
       List all provisioned **phone_numbers** rows (`GET /api/v1/phone`). Use each row’s **`id`** as **`phone_number_id`**
@@ -428,8 +433,9 @@ components:
       type: object
       description: >
         Body for **`POST /api/v1/agents`** (full create). Requires **`agent.name`**; all other top-level keys are optional.
-        Set runtime behavior (timeouts, auto hangup, inbound transfer routes) under **`agent_specific_config`** — values are
+        Set runtime behavior (timeouts, auto hangup, inbound transfer routes, audio tuning) under **`agent_specific_config`** — values are
         merged onto platform defaults and stored in `agent_specific_configs.configuration` (separate from share/branding info).
+        Enable inbound noise reduction on **`agent.apply_noise_reduction`**.
         Welcome line: **`agent.first_response_message`** or **`agent.welcome_message`** (alias). Not used for **`POST /api/v1/agents/simple`**.
       required: [agent]
       properties:
@@ -456,6 +462,12 @@ components:
             welcome_message:
               type: string
               description: Alias for `first_response_message` (use one or the other).
+            apply_noise_reduction:
+              type: boolean
+              default: false
+              description: >
+                When true, inbound audio is processed with spectral subtraction before VAD/STT.
+                Tune strength with **`agent_specific_config.noise_cancellation_strength`** (0–100).
         agent_model_config:
           $ref: "#/components/schemas/ModelConfig"
         tts_config:
@@ -485,6 +497,9 @@ components:
             welcome_message:
               type: string
               description: Alias for `first_response_message`.
+            apply_noise_reduction:
+              type: boolean
+              description: Enable inbound spectral subtraction (see `noise_cancellation_strength`).
         agent_model_config:
           $ref: "#/components/schemas/ModelConfig"
         tts_config:
@@ -495,6 +510,18 @@ components:
           $ref: "#/components/schemas/VadConfig"
         agent_specific_config:
           $ref: "#/components/schemas/AgentSpecificConfigInput"
+
+    NoiseAssetResponse:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          description: >
+            Asset identifier — use as **`background_noise_id`** (e.g. `office_noise.wav` or `office_noise` without extension).
+        name:
+          type: string
+          description: Display label derived from the filename (without `.wav`).
 
     ModelConfig:
       type: object
@@ -640,6 +667,41 @@ components:
           description: Multiple conditional PSTN transfer targets; enables `transfer_call` with `route_id`.
           items:
             $ref: "#/components/schemas/InboundTransferRouteItem"
+        time_to_cut:
+          type: integer
+          minimum: 1
+          maximum: 86400
+          description: >
+            Seconds before **`session_timeout`** when the platform warns the caller that the session is ending.
+        message_of_cut:
+          type: string
+          description: >
+            Spoken warning when **`time_to_cut`** is reached and **`end_call_message_mode`** is `fixed`.
+        end_call_message_mode:
+          type: string
+          enum: [fixed, context_aware]
+          default: fixed
+          description: >
+            `fixed` speaks **`message_of_cut`** verbatim; `context_aware` asks the LLM for a short line from conversation context.
+        noise_cancellation_strength:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: >
+            Per-agent spectral subtraction strength when **`agent.apply_noise_reduction`** is true
+            (0 = gentle, 50 = platform default, 100 = aggressive).
+        background_noise_id:
+          type: string
+          description: >
+            Outbound ambient track from **`GET /api/v1/noise-assets`** (`id` field). Mixed on the WebSocket outbound
+            path so agent TTS plays over continuous room tone. Omit or empty string for none.
+        background_noise_volume:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 100
+          description: >
+            Outbound background ambience gain 0–100 (left channel in the stereo mix). `100` = full level, `0` = mute.
 
     VadConfig:
       type: object
@@ -959,7 +1021,8 @@ paths:
         use **`POST /api/v1/agents/simple`** instead.
 
         **`agent_specific_config`** is optional on create; send only the behavior keys you need (timeouts, `auto_terminate_call`,
-        inbound transfer routes, etc.). Omitted keys use platform defaults.
+        inbound transfer routes, end-call warnings, noise cancellation strength, background noise, etc.). Omitted keys use platform defaults.
+        List background noise files with **`GET /api/v1/noise-assets`** before setting **`background_noise_id`**.
       operationId: createAgent
       requestBody:
         required: true
@@ -1460,6 +1523,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/noise-assets:
+    get:
+      tags: ["Noise Assets"]
+      summary: List available background noise assets
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/noise-assets`
+
+        Returns every outbound **background noise** WAV the platform can mix under agent speech on live calls.
+        Use each item's **`id`** as **`agent_specific_config.background_noise_id`** on
+        **`POST /api/v1/agents`** or **`PUT /api/v1/agents/{agent_id}`**.
+
+        **No background voice:** omit `background_noise_id`, or set it to `null` or `""` on update to clear a
+        previous selection. Optionally set `background_noise_volume` to `0` to mute while keeping an id.
+
+        See the page body (MDX) for examples, field tables, and curl workflows.
+      operationId: listNoiseAssets
+      security:
+        - KupeApiKey: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Array of noise asset rows.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NoiseAssetResponse"
+              example:
+                - id: office_noise.wav
+                  name: office_noise
+                - id: office_ambience_sound.wav
+                  name: office_ambience_sound
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
   /api/v1/phone:
     get:
       tags: ["Phone numbers"]

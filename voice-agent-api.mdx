@@ -55,6 +55,8 @@ Your integration checklist maps to Kupe as follows.
 | **model** | `agent_model_config` (`model_name`, …) — legacy `model_provider_id` still accepted |
 | **voice** | `tts_config` (`tts_model_name`, optional `language`, `voice_name`, `voice_parameters`) — legacy `tts_provider_id` still accepted |
 | **behavior / timeouts / transfer** | `agent_specific_config` on **`POST /api/v1/agents`** or **`PUT /api/v1/agents/{agent_id}`** (see [Agent-specific configuration](#agent-specific-configuration)) |
+| **inbound noise reduction** | `agent.apply_noise_reduction` plus `agent_specific_config.noise_cancellation_strength` (0–100) |
+| **outbound background noise** | `GET /api/v1/noise-assets` → `agent_specific_config.background_noise_id` (+ optional `background_noise_volume`) |
 | **extracted_variables** | Configure **Post analysis** (structured output / HTTP tool) on the agent in the dashboard; see [Webhooks](#5-webhooks-post-call) |
 | **context_params** | Passed at call time via your own telephony URL parameters or automation; the stock `create_call` query API does not accept a JSON body—extend or wrap if you need a single JSON contract |
 
@@ -134,6 +136,14 @@ Read current values from **`GET /api/v1/agents/{agent_id}`** → **`configuratio
 | `inbound_transfer_call_number` | string | Legacy single transfer target (digits only); use routes when you need multiple targets. |
 | `inbound_transfer_trigger_condition` | string | Legacy NL condition for the single-number transfer. |
 | `conversation_stop_words` | string[] | **Legacy — ignored at runtime.** Use `llm_conversation_stop_enabled` instead. |
+| `time_to_cut` | integer (seconds) | Warn the caller this many seconds before `session_timeout` ends. |
+| `message_of_cut` | string | Spoken warning at `time_to_cut` when `end_call_message_mode` is `fixed`. |
+| `end_call_message_mode` | string | `fixed` (use `message_of_cut`) or `context_aware` (LLM-generated short warning). |
+| `noise_cancellation_strength` | integer (0–100) | Spectral subtraction strength when **`agent.apply_noise_reduction`** is true (`50` = default). |
+| `background_noise_id` | string | Outbound ambient track **`id`** from [**List noise assets**](#list-background-noise-assets). Empty = none. |
+| `background_noise_volume` | integer (0–100) | Gain for outbound background ambience (`100` = full, `0` = mute). Default `100`. |
+
+Set **`agent.apply_noise_reduction`** on the same create/update body (not inside `agent_specific_config`) to enable inbound noise reduction before VAD/STT.
 
 **Example — create with behavior**
 
@@ -165,6 +175,55 @@ PUT /api/v1/agents/{agent_id}
 
 OpenAPI schema: **`AgentSpecificConfigInput`** in the [API reference](/api-reference/introduction).
 
+### List background noise assets
+
+`GET /api/v1/noise-assets`
+
+Returns the catalog of WAV assets you can assign to an agent for **outbound** room tone (mixed under agent speech on the live WebSocket path). Authenticate with **`x-api-key`** or **`Authorization: Bearer`**.
+
+Each row includes:
+
+| Field | Description |
+|-------|-------------|
+| `id` | Pass to **`agent_specific_config.background_noise_id`** (often the filename, e.g. `office_noise.wav`). |
+| `name` | Display label (filename without extension). |
+
+An empty array `[]` means no noise files are deployed on the server yet.
+
+#### No background voice
+
+To send **only** agent speech with no ambient track:
+
+- **Create:** omit `background_noise_id` from `agent_specific_config`.
+- **Update (clear):** `"background_noise_id": null` or `"background_noise_id": ""`.
+- **Verify:** `GET /api/v1/agents/{agent_id}` → `configurations.agent_specific_config` should not contain a non-empty `background_noise_id`.
+- **Dashboard:** choose **None** under Background noise asset (same as clearing via API).
+- **Mute only:** keep an `id` but set `"background_noise_volume": 0`.
+
+**Example workflow**
+
+```http
+GET /api/v1/noise-assets
+x-api-key: <YOUR_KUPE_API_KEY>
+```
+
+```json
+PUT /api/v1/agents/{agent_id}
+{
+  "agent": { "apply_noise_reduction": true },
+  "agent_specific_config": {
+    "background_noise_id": "office.wav",
+    "background_noise_volume": 40,
+    "noise_cancellation_strength": 50,
+    "time_to_cut": 30,
+    "message_of_cut": "We will need to end the call shortly.",
+    "end_call_message_mode": "fixed"
+  }
+}
+```
+
+Interactive docs: **Noise Assets** → **List available background noise assets** in the [API reference](/api-reference/introduction).
+
 ### Create simple agent (defaults only)
 
 `POST /api/v1/agents/simple`
@@ -192,6 +251,7 @@ Body: **`AgentUpdateRequest`** (partial fields). Active agents reject config cha
 | `GET /api/v1/providers/tts` | Text-to-speech providers |
 | `GET /api/v1/providers/vad` | VAD providers |
 | `GET /api/v1/providers/all` | All of the above in one JSON object |
+| `GET /api/v1/noise-assets` | Outbound **background noise** WAV catalog (`id` → `background_noise_id`) |
 
 Use these lists to populate UI or to resolve **codes** vs **UUIDs** for agent creation.
 
