@@ -57,6 +57,13 @@
             ]
           },
           {
+            "group": "Campaigns & Contacts",
+            "openapi": {
+              "source": "/api-reference/campaigns-contacts.openapi.yaml",
+              "directory": "api-reference/campaigns-contacts"
+            }
+          },
+          {
             "group": "Voice Agent API",
             "openapi": {
               "source": "/api-reference/kupe-voice-agent.openapi.yaml",

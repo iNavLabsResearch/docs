@@ -1,0 +1,1100 @@
+openapi: 3.1.0
+info:
+  title: Campaigns & Contacts API
+  description: |
+    REST endpoints for managing calling campaigns (batches) and contact directories (People Groups, columns, and rows).
+    
+    **Production base URL:** `https://api.kupe.in` — prepend this to each path below.
+  version: "1.0.0"
+
+servers:
+  - url: https://api.kupe.in
+    description: Production
+
+tags:
+  - name: Campaigns
+    description: Create, update, control, list, and monitor outbound campaigns (batches).
+  - name: "People Groups"
+    description: Define schemas (columns), list records (rows), and upload contact CSVs.
+
+security:
+  - KupeApiKey: []
+  - BearerAuth: []
+
+paths:
+  # --- Campaigns ---
+  /api/v1/campaigns:
+    get:
+      tags: [Campaigns]
+      summary: List campaigns
+      description: Retrieve a paginated list of campaigns for the current user.
+      operationId: listCampaigns
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Start date filter.
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: End date filter.
+      responses:
+        "200":
+          description: A list of campaigns and total count.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaigns:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CampaignResponse"
+                  total:
+                    type: integer
+    post:
+      tags: [Campaigns]
+      summary: Create campaign
+      description: Create a new calling campaign (batch).
+      operationId: createCampaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignCreateRequest"
+      responses:
+        "200":
+          description: Successfully created campaign.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign:
+                    $ref: "#/components/schemas/CampaignResponse"
+
+  /api/v1/campaigns/dashboard-analytics:
+    get:
+      tags: [Campaigns]
+      summary: Dashboard analytics
+      description: Single fast query to retrieve aggregated campaign call outcomes for the dashboard.
+      operationId: getCampaignDashboardAnalytics
+      parameters:
+        - name: from_date
+          in: query
+          schema:
+            type: string
+        - name: to_date
+          in: query
+          schema:
+            type: string
+        - name: chart_from_date
+          in: query
+          schema:
+            type: string
+        - name: chart_to_date
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Aggregated dashboard analytics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+
+  /api/v1/campaigns/{campaign_id}:
+    parameters:
+      - name: campaign_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Campaigns]
+      summary: Get campaign
+      description: Get details of a specific campaign by ID.
+      operationId: getCampaign
+      responses:
+        "200":
+          description: Campaign details.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign:
+                    $ref: "#/components/schemas/CampaignResponse"
+    patch:
+      tags: [Campaigns]
+      summary: Update campaign
+      description: Update properties of an existing campaign.
+      operationId: updateCampaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignUpdateRequest"
+      responses:
+        "200":
+          description: Successfully updated campaign.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign:
+                    $ref: "#/components/schemas/CampaignResponse"
+    delete:
+      tags: [Campaigns]
+      summary: Delete campaign
+      description: Delete a campaign.
+      operationId: deleteCampaign
+      responses:
+        "200":
+          description: Deleted successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: string
+                    example: "true"
+
+  /api/v1/campaigns/{campaign_id}/start:
+    post:
+      tags: [Campaigns]
+      summary: Start campaign
+      description: Start dialing for the campaign.
+      operationId: startCampaign
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Success status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMsgResponse"
+
+  /api/v1/campaigns/{campaign_id}/pause:
+    post:
+      tags: [Campaigns]
+      summary: Pause campaign
+      description: Pause an active campaign.
+      operationId: pauseCampaign
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Success status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMsgResponse"
+
+  /api/v1/campaigns/{campaign_id}/stop:
+    post:
+      tags: [Campaigns]
+      summary: Stop campaign
+      description: Stop a campaign permanently.
+      operationId: stopCampaign
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Success status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMsgResponse"
+
+  /api/v1/campaigns/{campaign_id}/resume:
+    post:
+      tags: [Campaigns]
+      summary: Resume campaign
+      description: Resume a paused campaign.
+      operationId: resumeCampaign
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Success status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMsgResponse"
+
+  /api/v1/campaigns/{campaign_id}/analytics:
+    get:
+      tags: [Campaigns]
+      summary: Get campaign analytics
+      description: Aggregated campaign metrics including outcomes, insights, and transfers.
+      operationId: getCampaignAnalytics
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Aggregated metrics.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  analytics:
+                    $ref: "#/components/schemas/ArbitraryJson"
+
+  /api/v1/campaigns/{campaign_id}/logs:
+    get:
+      tags: [Campaigns]
+      summary: Get campaign logs
+      description: Get completed or failed call logs for the campaign.
+      operationId: getCampaignLogs
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: Completed or failed logs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ArbitraryJson"
+                  total:
+                    type: integer
+
+  /api/v1/campaigns/{campaign_id}/export:
+    get:
+      tags: [Campaigns]
+      summary: Export campaign data
+      description: Export campaign members and call history as a CSV or Excel file.
+      operationId: exportCampaignData
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [csv, excel]
+            default: csv
+      responses:
+        "200":
+          description: File download.
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+
+  /api/v1/campaigns/{campaign_id}/groups:
+    post:
+      tags: [Campaigns]
+      summary: Add group to campaign
+      description: Add all members of a People Group to the campaign.
+      operationId: addGroupToCampaign
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddGroupToCampaignRequest"
+      responses:
+        "200":
+          description: Success response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddGroupToCampaignResponse"
+
+  /api/v1/campaigns/{campaign_id}/groups/multiple:
+    post:
+      tags: [Campaigns]
+      summary: Add multiple groups to campaign
+      description: Add all members of multiple People Groups to the campaign.
+      operationId: addMultipleGroupsToCampaign
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddMultipleGroupsToCampaignRequest"
+      responses:
+        "200":
+          description: Success response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddGroupToCampaignResponse"
+
+  /api/v1/campaigns/{campaign_id}/members:
+    get:
+      tags: [Campaigns]
+      summary: Get campaign members
+      description: Retrieve all members for a campaign.
+      operationId: getCampaignMembers
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of members.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CampaignMemberResponse"
+                  total:
+                    type: integer
+    delete:
+      tags: [Campaigns]
+      summary: Clear campaign members
+      description: Remove all members from the campaign.
+      operationId: removeAllCampaignMembers
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Success confirmation.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: string
+                    example: "true"
+
+  # --- People Groups ---
+  /api/v1/people-groups:
+    get:
+      tags: ["People Groups"]
+      summary: List people groups
+      description: Retrieve a list of people groups for the current user.
+      operationId: listPeopleGroups
+      responses:
+        "200":
+          description: List of groups.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PeopleGroupResponse"
+    post:
+      tags: ["People Groups"]
+      summary: Create people group
+      description: Create a new people group.
+      operationId: createPeopleGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeopleGroupCreateRequest"
+      responses:
+        "200":
+          description: Successfully created group.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group:
+                    $ref: "#/components/schemas/PeopleGroupResponse"
+
+  /api/v1/people-groups/{group_id}:
+    parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: ["People Groups"]
+      summary: Update people group
+      description: Update properties of an existing people group.
+      operationId: patchPeopleGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeopleGroupUpdateRequest"
+      responses:
+        "200":
+          description: Successfully updated group.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group:
+                    $ref: "#/components/schemas/PeopleGroupResponse"
+    delete:
+      tags: ["People Groups"]
+      summary: Delete people group
+      description: Delete a people group.
+      operationId: deletePeopleGroup
+      responses:
+        "200":
+          description: Deleted successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: string
+                    example: "true"
+
+  /api/v1/people-groups/{group_id}/columns:
+    parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: ["People Groups"]
+      summary: List columns
+      description: Retrieve all custom schema columns for a specific people group.
+      operationId: listColumns
+      responses:
+        "200":
+          description: List of columns.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  columns:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PeopleGroupColumnResponse"
+    post:
+      tags: ["People Groups"]
+      summary: Create column
+      description: Create a new custom column for a specific people group.
+      operationId: createColumn
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeopleGroupColumnCreateRequest"
+      responses:
+        "200":
+          description: Successfully created column.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  column:
+                    $ref: "#/components/schemas/PeopleGroupColumnResponse"
+
+  /api/v1/people-groups/{group_id}/columns/{column_id}:
+    parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: column_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: ["People Groups"]
+      summary: Update column
+      description: Update properties of an existing custom column.
+      operationId: patchColumn
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeopleGroupColumnUpdateRequest"
+      responses:
+        "200":
+          description: Successfully updated column.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  column:
+                    $ref: "#/components/schemas/PeopleGroupColumnResponse"
+    delete:
+      tags: ["People Groups"]
+      summary: Delete column
+      description: Delete a custom column.
+      operationId: deleteColumn
+      responses:
+        "200":
+          description: Deleted successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: string
+                    example: "true"
+
+  /api/v1/people-groups/{group_id}/rows:
+    parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: ["People Groups"]
+      summary: List rows
+      description: Retrieve contact rows for a specific people group.
+      operationId: listRows
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of rows.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PeopleGroupRowResponse"
+    post:
+      tags: ["People Groups"]
+      summary: Create row
+      description: Create a new contact record row in a specific people group.
+      operationId: createRow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeopleGroupRowCreateRequest"
+      responses:
+        "200":
+          description: Successfully created row.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  row:
+                    $ref: "#/components/schemas/PeopleGroupRowResponse"
+
+  /api/v1/people-groups/{group_id}/rows/{row_id}:
+    parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: row_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: ["People Groups"]
+      summary: Update row
+      description: Update properties of an existing contact row.
+      operationId: patchRow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeopleGroupRowUpdateRequest"
+      responses:
+        "200":
+          description: Successfully updated row.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  row:
+                    $ref: "#/components/schemas/PeopleGroupRowResponse"
+    delete:
+      tags: ["People Groups"]
+      summary: Delete row
+      description: Delete a contact row.
+      operationId: deleteRow
+      responses:
+        "200":
+          description: Deleted successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: string
+                    example: "true"
+
+  /api/v1/people-groups/{group_id}/upload-csv:
+    post:
+      tags: ["People Groups"]
+      summary: Bulk upload rows from CSV
+      description: Upload a CSV file to bulk create contact rows for a people group.
+      operationId: uploadRowsCsv
+      parameters:
+        - name: group_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: UTF-8 encoded CSV file containing contacts.
+      responses:
+        "200":
+          description: Bulk upload stats report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArbitraryJson"
+
+components:
+  securitySchemes:
+    KupeApiKey:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: Kupe dashboard API key.
+      x-default: "YOUR_KUPE_API_KEY"
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase session JWT.
+
+  schemas:
+    CampaignResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        agent_id:
+          type: string
+          format: uuid
+        workflow_id:
+          type: string
+          format: uuid
+          nullable: true
+        call_flow_id:
+          type: string
+          format: uuid
+          nullable: true
+        caller_phone_id:
+          type: string
+          format: uuid
+        batch_name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+        variable_names:
+          type: array
+          items:
+            type: string
+        batch_size:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CampaignCreateRequest:
+      type: object
+      required: [agent_id, caller_phone_id, batch_name, variable_names]
+      properties:
+        agent_id:
+          type: string
+          format: uuid
+        workflow_id:
+          type: string
+          format: uuid
+          nullable: true
+        call_flow_id:
+          type: string
+          format: uuid
+          nullable: true
+        caller_phone_id:
+          type: string
+          format: uuid
+        batch_name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          default: not_started
+        variable_names:
+          type: array
+          items:
+            type: string
+        batch_size:
+          type: integer
+          nullable: true
+
+    CampaignUpdateRequest:
+      type: object
+      properties:
+        agent_id:
+          type: string
+          format: uuid
+        workflow_id:
+          type: string
+          format: uuid
+          nullable: true
+        call_flow_id:
+          type: string
+          format: uuid
+          nullable: true
+        caller_phone_id:
+          type: string
+          format: uuid
+        batch_name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+        variable_names:
+          type: array
+          items:
+            type: string
+        batch_size:
+          type: integer
+          nullable: true
+
+    AddGroupToCampaignRequest:
+      type: object
+      required: [group_id]
+      properties:
+        group_id:
+          type: string
+          format: uuid
+
+    AddMultipleGroupsToCampaignRequest:
+      type: object
+      required: [group_ids]
+      properties:
+        group_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    AddGroupToCampaignResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        members_added:
+          type: integer
+
+    CampaignMemberResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        campaign_id:
+          type: string
+          format: uuid
+        to_phonenumber:
+          type: string
+        variable_values:
+          type: object
+          additionalProperties: true
+        dial_status:
+          type: string
+        error_message:
+          type: string
+          nullable: true
+
+    PeopleGroupResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        icon_emoji:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PeopleGroupCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        icon_emoji:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+
+    PeopleGroupUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        icon_emoji:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+
+    PeopleGroupColumnResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        group_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        column_type:
+          type: string
+        order_by:
+          type: integer
+          nullable: true
+
+    PeopleGroupColumnCreateRequest:
+      type: object
+      required: [display_name, column_type]
+      properties:
+        display_name:
+          type: string
+        column_type:
+          type: string
+        order_by:
+          type: integer
+          nullable: true
+
+    PeopleGroupColumnUpdateRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+        column_type:
+          type: string
+        order_by:
+          type: integer
+          nullable: true
+
+    PeopleGroupRowResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        group_id:
+          type: string
+          format: uuid
+        properties:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PeopleGroupRowCreateRequest:
+      type: object
+      required: [properties]
+      properties:
+        properties:
+          type: object
+          additionalProperties: true
+
+    PeopleGroupRowUpdateRequest:
+      type: object
+      properties:
+        properties:
+          type: object
+          additionalProperties: true
+
+    SuccessMsgResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+
+    ArbitraryJson:
+      type: object
+      additionalProperties: true
