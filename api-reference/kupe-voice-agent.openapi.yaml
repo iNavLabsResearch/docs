@@ -14,14 +14,20 @@ info:
     | `GET /api/v1/agents` | `https://api.kupe.in/api/v1/agents` |
     | `POST /api/v1/agents` | `https://api.kupe.in/api/v1/agents` (full create; optional `agent_specific_config`) |
     | `POST /api/v1/agents/simple` | `https://api.kupe.in/api/v1/agents/simple` |
+    | `GET /api/v1/agents/stats` | `https://api.kupe.in/api/v1/agents/stats` |
     | `GET/PUT/DELETE /api/v1/agents/{agent_id}` | `https://api.kupe.in/api/v1/agents/{agent_id}` |
+    | `PATCH /api/v1/agents/{agent_id}/*-config` | Update partial agent configurations |
     | `GET /api/v1/providers/model` | `https://api.kupe.in/api/v1/providers/model` |
     | `GET /api/v1/providers/tts` | `https://api.kupe.in/api/v1/providers/tts` |
     | `GET /api/v1/providers/stt` | `https://api.kupe.in/api/v1/providers/stt` |
     | `GET /api/v1/providers/all` | `https://api.kupe.in/api/v1/providers/all` |
     | `GET /api/v1/tts-voices` | `https://api.kupe.in/api/v1/tts-voices` |
     | `GET /api/v1/noise-assets` | `https://api.kupe.in/api/v1/noise-assets` (background noise catalog) |
+    | `GET/POST /api/call/incoming_call` | `https://api.kupe.in/api/call/incoming_call` (TwiML webhook) |
+    | `GET/POST /api/call/openai-incoming_call` | `https://api.kupe.in/api/call/openai-incoming_call` (OpenAI TwiML webhook) |
     | `POST /api/call/create_call` | `https://api.kupe.in/api/call/create_call` |
+    | `GET /api/call/auth/token` | `https://api.kupe.in/api/call/auth/token` (WebSocket authentication) |
+    | `GET /api/call/*media-stream` | WebSockets: `/api/call/media-stream`, `/api/call/web-media-stream`, etc. |
     | `POST /api/v1/batch-call/create` | Create outbound batch campaign |
     | `POST /api/v1/batch-call/upload-json/{batch_id}` | Add target numbers (JSON) |
     | `POST /api/v1/batch-call/start/{batch_id}` | Launch batch campaign |
@@ -130,6 +136,8 @@ tags:
   - name: Webhooks
     description: Example payloads Kupe can POST to **your** HTTPS URL 
       (post-analysis HTTP tool).
+  - name: "Authentication & WebSockets"
+    description: Get tokens and connect to real-time media streams via Twilio or Web WebSocket protocols.
 
 security:
   - KupeApiKey: []
@@ -1128,6 +1136,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
+  /api/v1/agents/stats:
+    get:
+      tags: ["Agent Management"]
+      summary: Get agent statistics
+      description: |
+        **Full URL:** `GET https://api.kupe.in/api/v1/agents/stats`
+        
+        Get statistics about the user's agents including counts and usage metrics.
+      operationId: getAgentStats
+      responses:
+        "200":
+          description: Agent statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "500":
+          description: Server error
   /api/v1/agents/simple:
     post:
       tags: ["Agent Management"]
@@ -1351,6 +1382,118 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
+
+  /api/v1/agents/{agent_id}/model-config:
+    patch:
+      tags: ["Agent Management"]
+      summary: Update model config
+      description: "**Full URL:** `PATCH https://api.kupe.in/api/v1/agents/{agent_id}/model-config` (optional `?force_update=true`)"
+      operationId: updateAgentModelConfig
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: force_update
+          in: query
+          schema: {type: boolean, default: false}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelConfig"
+      responses:
+        "200":
+          description: Updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAgentResponse"
+
+  /api/v1/agents/{agent_id}/tts-config:
+    patch:
+      tags: ["Agent Management"]
+      summary: Update TTS config
+      description: "**Full URL:** `PATCH https://api.kupe.in/api/v1/agents/{agent_id}/tts-config` (optional `?force_update=true`)"
+      operationId: updateAgentTtsConfig
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: force_update
+          in: query
+          schema: {type: boolean, default: false}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TtsConfig"
+      responses:
+        "200":
+          description: Updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAgentResponse"
+
+  /api/v1/agents/{agent_id}/transcriber-config:
+    patch:
+      tags: ["Agent Management"]
+      summary: Update transcriber config
+      description: "**Full URL:** `PATCH https://api.kupe.in/api/v1/agents/{agent_id}/transcriber-config` (optional `?force_update=true`)"
+      operationId: updateAgentTranscriberConfig
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: force_update
+          in: query
+          schema: {type: boolean, default: false}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TranscriberConfig"
+      responses:
+        "200":
+          description: Updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAgentResponse"
+
+  /api/v1/agents/{agent_id}/vad-config:
+    patch:
+      tags: ["Agent Management"]
+      summary: Update VAD config
+      description: "**Full URL:** `PATCH https://api.kupe.in/api/v1/agents/{agent_id}/vad-config` (optional `?force_update=true`)"
+      operationId: updateAgentVadConfig
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: force_update
+          in: query
+          schema: {type: boolean, default: false}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VadConfig"
+      responses:
+        "200":
+          description: Updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAgentResponse"
 
   /api/v1/providers/model:
     get:
@@ -1692,6 +1835,104 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
+  /api/call/:
+    get:
+      tags: ["Service"]
+      summary: Platform Status
+      description: "**Full URL:** `GET https://api.kupe.in/api/call/`\n\nSimple status endpoint showing the platform is running."
+      operationId: platformStatus
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/call/test:
+    get:
+      tags: ["Service"]
+      summary: Test Agent Configuration
+      description: "**Full URL:** `GET https://api.kupe.in/api/call/test`\n\nTest endpoint for validating agent configuration."
+      operationId: testAgentConfig
+      parameters:
+        - name: agent_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/call/incoming_call:
+    get:
+      tags: ["Incoming calls"]
+      summary: Handle Incoming Call (GET)
+      description: "**Full URL:** `GET https://api.kupe.in/api/call/incoming_call`\n\nReturns TwiML response to connect to Media Stream."
+      operationId: handleIncomingCallGet
+      responses:
+        "200":
+          description: TwiML XML
+          content:
+            text/xml:
+              schema:
+                type: string
+    post:
+      tags: ["Incoming calls"]
+      summary: Handle Incoming Call (POST)
+      description: "**Full URL:** `POST https://api.kupe.in/api/call/incoming_call`\n\nHandle incoming call webhook from Twilio."
+      operationId: handleIncomingCallPost
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: TwiML XML
+          content:
+            text/xml:
+              schema:
+                type: string
+
+  /api/call/openai-incoming_call:
+    get:
+      tags: ["Incoming calls"]
+      summary: Handle OpenAI Incoming Call (GET)
+      description: "**Full URL:** `GET https://api.kupe.in/api/call/openai-incoming_call`\n\nReturns TwiML response for OpenAI call routing."
+      operationId: handleOpenAiIncomingCallGet
+      responses:
+        "200":
+          description: TwiML XML
+          content:
+            text/xml:
+              schema:
+                type: string
+    post:
+      tags: ["Incoming calls"]
+      summary: Handle OpenAI Incoming Call (POST)
+      description: "**Full URL:** `POST https://api.kupe.in/api/call/openai-incoming_call`\n\nWebhook from Twilio for OpenAI processing."
+      operationId: handleOpenAiIncomingCallPost
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: TwiML XML
+          content:
+            text/xml:
+              schema:
+                type: string
 
   /api/call/create_call:
     post:
@@ -1782,6 +2023,56 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
+
+  /api/call/auth/token:
+    get:
+      tags: ["Authentication & WebSockets"]
+      summary: Get Auth Token
+      description: "**Full URL:** `GET https://api.kupe.in/api/call/auth/token`\n\nGet an authentication token for the client."
+      operationId: getCallAuthToken
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/call/media-stream:
+    get:
+      tags: ["Authentication & WebSockets"]
+      summary: WebSocket Media Stream (Twilio)
+      description: "**Full URL:** `wss://api.kupe.in/api/call/media-stream`\n\nWebSocket endpoint for Twilio media streaming. Protocol upgrade required."
+      operationId: twilioMediaStream
+      responses:
+        "101":
+          description: Switching Protocols
+
+  /api/call/web-media-stream:
+    get:
+      tags: ["Authentication & WebSockets"]
+      summary: WebSocket Media Stream (Web)
+      description: "**Full URL:** `wss://api.kupe.in/api/call/web-media-stream`\n\nWebSocket endpoint for web-based media streaming. Protocol upgrade required."
+      operationId: webMediaStream
+      parameters:
+        - name: agent_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "101":
+          description: Switching Protocols
+
+  /api/call/openai-twilio-media-stream:
+    get:
+      tags: ["Authentication & WebSockets"]
+      summary: WebSocket OpenAI Media Stream
+      description: "**Full URL:** `wss://api.kupe.in/api/call/openai-twilio-media-stream`\n\nWebSocket endpoint for OpenAI real-time processing with Twilio. Protocol upgrade required."
+      operationId: openaiTwilioMediaStream
+      responses:
+        "101":
+          description: Switching Protocols
 
   /api/v1/batch-call/create:
     post:
