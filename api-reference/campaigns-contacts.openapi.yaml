@@ -5,6 +5,16 @@ info:
     REST endpoints for managing calling campaigns (batches) and contact directories (People Groups, columns, and rows).
     
     **Production base URL:** `https://api.kupe.in` — prepend this to each path below.
+
+    ## Recommended workflow: Excel → People → Campaign → Launch
+
+    1. `POST /api/v1/people-groups` — create a people list
+    2. `POST /api/v1/people-groups/{id}/upload/preview` — (optional) validate Excel/CSV mapping
+    3. `POST /api/v1/people-groups/{id}/upload` — import contacts from `.csv`, `.xlsx`, or `.xls`
+    4. `POST /api/v1/campaigns` — create a campaign (agent/workflow + caller phone)
+    5. `POST /api/v1/campaigns/{id}/groups` — attach the people list to the campaign
+    6. `GET /api/v1/campaigns/{id}/readiness` — verify the campaign can be launched
+    7. `POST /api/v1/campaigns/{id}/start` — start dialing
   version: "1.0.0"
 
 servers:
@@ -15,7 +25,7 @@ tags:
   - name: Campaigns
     description: Create, update, control, list, and monitor outbound campaigns (batches).
   - name: "People Groups"
-    description: Define schemas (columns), list records (rows), and upload contact CSVs.
+    description: Define schemas (columns), list records (rows), and upload contact files (CSV, Excel).
 
 security:
   - KupeApiKey: []
@@ -183,11 +193,34 @@ paths:
                     type: string
                     example: "true"
 
+  /api/v1/campaigns/{campaign_id}/readiness:
+    get:
+      tags: [Campaigns]
+      summary: Check campaign launch readiness
+      description: |
+        Returns a checklist (`can_start`, `blockers`, `member_count`) so clients can
+        verify a campaign is ready before calling `POST .../start`.
+      operationId: getCampaignReadiness
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Readiness checklist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignReadinessResponse"
+
   /api/v1/campaigns/{campaign_id}/start:
     post:
       tags: [Campaigns]
       summary: Start campaign
-      description: Start dialing for the campaign.
+      description: Start dialing for the campaign. Requires members, caller phone, and agent/workflow.
       operationId: startCampaign
       parameters:
         - name: campaign_id
@@ -198,11 +231,24 @@ paths:
             format: uuid
       responses:
         "200":
-          description: Success status.
+          description: Campaign started.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuccessMsgResponse"
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                    example: Campaign started. Dialing will begin shortly.
+                  status:
+                    type: string
+                    example: in_progress
+                  member_count:
+                    type: integer
+                  data:
+                    $ref: "#/components/schemas/ArbitraryJson"
 
   /api/v1/campaigns/{campaign_id}/pause:
     post:
@@ -756,11 +802,81 @@ paths:
                     type: string
                     example: "true"
 
+  /api/v1/people-groups/{group_id}/upload/preview:
+    post:
+      tags: ["People Groups"]
+      summary: Preview file import (no DB writes)
+      description: Parse a CSV, XLSX, or XLS file and return column mapping, sample rows, and warnings.
+      operationId: previewPeopleUpload
+      parameters:
+        - name: group_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV, XLSX, or XLS file (max 10 MB).
+      responses:
+        "200":
+          description: Import preview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeopleUploadPreviewResponse"
+
+  /api/v1/people-groups/{group_id}/upload:
+    post:
+      tags: ["People Groups"]
+      summary: Bulk upload rows from CSV or Excel
+      description: |
+        Upload a `.csv`, `.xlsx`, or `.xls` file to bulk create contact rows.
+        Auto-maps headers to columns, creates missing columns, and skips rows without a phone number.
+      operationId: uploadPeopleFile
+      parameters:
+        - name: group_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV, XLSX, or XLS file (max 10 MB).
+      responses:
+        "200":
+          description: Bulk upload result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeopleUploadResultResponse"
+
   /api/v1/people-groups/{group_id}/upload-csv:
     post:
       tags: ["People Groups"]
-      summary: Bulk upload rows from CSV
-      description: Upload a CSV file to bulk create contact rows for a people group.
+      summary: Bulk upload rows from CSV (legacy)
+      description: |
+        **Deprecated:** prefer `POST .../upload` which also accepts Excel.
+        Upload a UTF-8 CSV file to bulk create contact rows for a people group.
       operationId: uploadRowsCsv
       parameters:
         - name: group_id
@@ -787,7 +903,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ArbitraryJson"
+                $ref: "#/components/schemas/PeopleUploadResultResponse"
 
 components:
   securitySchemes:
@@ -934,12 +1050,92 @@ components:
     AddGroupToCampaignResponse:
       type: object
       properties:
-        success:
-          type: boolean
+        inserted_count:
+          type: integer
+        skipped_count:
+          type: integer
+        skipped_no_phone:
+          type: integer
+        skipped_duplicate:
+          type: integer
+        skipped_filtered:
+          type: integer
+        group_id:
+          type: string
+          format: uuid
+          nullable: true
+        group_name:
+          type: string
+          nullable: true
         message:
           type: string
-        members_added:
+
+    CampaignReadinessResponse:
+      type: object
+      properties:
+        can_start:
+          type: boolean
+        member_count:
           type: integer
+        has_agent_or_workflow:
+          type: boolean
+        has_caller_phone:
+          type: boolean
+        status:
+          type: string
+        blockers:
+          type: array
+          items:
+            type: string
+
+    PeopleUploadPreviewResponse:
+      type: object
+      properties:
+        detected_headers:
+          type: array
+          items:
+            type: string
+        column_mapping:
+          type: object
+          additionalProperties:
+            type: string
+        phone_column:
+          type: string
+          nullable: true
+        sample_rows:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: string
+        total_rows:
+          type: integer
+        rows_missing_phone:
+          type: integer
+        warnings:
+          type: array
+          items:
+            type: string
+
+    PeopleUploadResultResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        inserted_count:
+          type: integer
+        skipped_count:
+          type: integer
+        columns_created:
+          type: integer
+        column_mapping:
+          type: object
+          additionalProperties:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
 
     CampaignMemberResponse:
       type: object

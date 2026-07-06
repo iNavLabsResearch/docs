@@ -24,7 +24,6 @@ info:
     | `GET /api/v1/tts-voices` | `https://api.kupe.in/api/v1/tts-voices` |
     | `GET /api/v1/noise-assets` | `https://api.kupe.in/api/v1/noise-assets` (background noise catalog) |
     | `GET/POST /api/call/incoming_call` | `https://api.kupe.in/api/call/incoming_call` (TwiML webhook) |
-    | `GET/POST /api/call/openai-incoming_call` | `https://api.kupe.in/api/call/openai-incoming_call` (OpenAI TwiML webhook) |
     | `POST /api/call/create_call` | `https://api.kupe.in/api/call/create_call` |
     | `GET /api/call/auth/token` | `https://api.kupe.in/api/call/auth/token` (WebSocket authentication) |
     | `GET /api/call/*media-stream` | WebSockets: `/api/call/media-stream`, `/api/call/web-media-stream`, etc. |
@@ -1902,38 +1901,6 @@ paths:
               schema:
                 type: string
 
-  /api/call/openai-incoming_call:
-    get:
-      tags: ["Incoming calls"]
-      summary: Handle OpenAI Incoming Call (GET)
-      description: "**Full URL:** `GET https://api.kupe.in/api/call/openai-incoming_call`\n\nReturns TwiML response for OpenAI call routing."
-      operationId: handleOpenAiIncomingCallGet
-      responses:
-        "200":
-          description: TwiML XML
-          content:
-            text/xml:
-              schema:
-                type: string
-    post:
-      tags: ["Incoming calls"]
-      summary: Handle OpenAI Incoming Call (POST)
-      description: "**Full URL:** `POST https://api.kupe.in/api/call/openai-incoming_call`\n\nWebhook from Twilio for OpenAI processing."
-      operationId: handleOpenAiIncomingCallPost
-      requestBody:
-        content:
-          application/x-www-form-urlencoded:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        "200":
-          description: TwiML XML
-          content:
-            text/xml:
-              schema:
-                type: string
-
   /api/call/create_call:
     post:
       tags: ["Outbound calls"]
@@ -2060,16 +2027,6 @@ paths:
           in: query
           required: true
           schema: {type: string, format: uuid}
-      responses:
-        "101":
-          description: Switching Protocols
-
-  /api/call/openai-twilio-media-stream:
-    get:
-      tags: ["Authentication & WebSockets"]
-      summary: WebSocket OpenAI Media Stream
-      description: "**Full URL:** `wss://api.kupe.in/api/call/openai-twilio-media-stream`\n\nWebSocket endpoint for OpenAI real-time processing with Twilio. Protocol upgrade required."
-      operationId: openaiTwilioMediaStream
       responses:
         "101":
           description: Switching Protocols
