@@ -7,7 +7,7 @@
     "light": "#6366f1",
     "dark": "#4338ca"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/favicon.png",
   "css": "/style.css",
   "navigation": {
     "tabs": [
@@ -78,8 +78,8 @@
     }
   },
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg",
+    "light": "/logo/light.png",
+    "dark": "/logo/dark.png",
     "href": "https://kupe.in"
   },
   "navbar": {
