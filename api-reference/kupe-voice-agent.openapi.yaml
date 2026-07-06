@@ -65,7 +65,7 @@ info:
     **Field mapping (client spec):** `name` → `agent.name`; `prompt` → `agent_model_config.system_prompt`;
     `transcriber` / `model` / `voice` → nested configs on **`PUT /api/v1/agents/{agent_id}`** (after **`POST /api/v1/agents/simple`**); `call_type` inbound/outbound →
     dashboard phone mapping + `POST /api/call/create_call`; `extracted_variables` → post-analysis structured output;
-    `context_params` → bring your own telephony metadata (stock outbound uses query params).
+    `context_params` → optional JSON body on `POST /api/call/create_call` with `variable_values` (`{{key}}` → prompt / first response).
 
     **LLM / TTS / STT:** pass **catalog codes** (`model_name`, `provider_name`, or `provider:model_name` for TTS) or row UUIDs — the API **resolves codes to internal ids** before save (never send arbitrary strings as UUIDs). VAD and inferencing toggles are **not** in the default create body; the platform applies defaults. See [Model providers](/assistants/model-providers) and [Supported models & providers](/supported-models).
   version: "1.0.0"
@@ -99,6 +99,7 @@ tags:
     description: >
       Initiate outbound PSTN calls (`POST /api/call/create_call`). Authenticate with **`x-api-key`** or **Bearer**;
       user is inferred from auth only; response includes `request_id` and `call_session_id`.
+      Optional JSON body **`variable_values`** substitutes `{{placeholders}}` in the agent system prompt and first-response message at dial time.
   - name: "Batch calling"
     description: >
       Outbound **campaigns**: create a batch (agent + caller line), upload or upsert target numbers with template
@@ -272,7 +273,6 @@ components:
         - user_id
         - telephony_provider
         - target_number
-        - detail
       properties:
         status:
           type: string
@@ -294,6 +294,22 @@ components:
         detail:
           type: string
           description: Human-readable failure reason (no raw carrier payloads).
+
+    CreateCallBody:
+      type: object
+      description: |
+        Optional JSON body for `POST /api/call/create_call`. Query params identify who to call and which agent/workflow to run;
+        `variable_values` supplies per-call template data for prompt personalization.
+      properties:
+        variable_values:
+          type: object
+          additionalProperties: true
+          description: |
+            Key-value map substituted into the agent's **system prompt** and **first-response message** at call time.
+            Use `{{key}}` placeholders in the agent prompt (e.g. `Hello {{name}}, your balance is {{balance}}`).
+          example:
+            name: Alex
+            balance: "$50"
 
     CreateBatchRequest:
       type: object
@@ -1906,19 +1922,24 @@ paths:
       tags: ["Outbound calls"]
       summary: Initiate outbound call
       description: |
-        **Full URL (query string, not JSON body):**  
+        **Full URL:**  
         `POST https://api.kupe.in/api/call/create_call?phoneNumber=%2B15551234567&agent_id={uuid}`
 
-        Places an outbound PSTN call. **Query parameters** (not JSON body): `phoneNumber` (required),
-        optional `agent_id`, `workflow_id`, `phone_number_id`. There is **no** `user_id` query — the user is always the
-        **API key owner** or **Bearer session** user.
+        Places an outbound PSTN call.
+
+        **Query parameters** (routing): `phoneNumber` (required), optional `agent_id`, `workflow_id`, `phone_number_id`.
+        There is **no** `user_id` query — the user is always the **API key owner** or **Bearer session** user.
+
+        **Optional JSON body** (`Content-Type: application/json`): **`variable_values`** — key-value pairs that replace
+        `{{key}}` placeholders in the agent **system prompt** and **first-response message** when the callee answers
+        (same personalization as campaigns/batches, without creating a campaign).
 
         **Authentication (required):** **`x-api-key`** (recommended for integrations) **or**
         **`Authorization: Bearer`** with your Supabase session JWT. That identity is used for billing and for
         resolving `phone_numbers` and agent–phone mappings.
 
         **Phone access:** outbound uses `phone_number_id` and/or agent or workflow mapping on **that** user’s rows;
-        credentials and PSTN backend follow the stored `provider` (Twilio, Elison, Exotel).
+        credentials and PSTN backend follow the stored `provider` (Twilio, Elison, Exotel, Plivo).
 
         **Destination numbers:** **E.164** with country code (URL-encode `+` as `%2B` in curl).
 
@@ -1954,6 +1975,17 @@ paths:
           schema:
             type: string
             format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCallBody"
+            example:
+              variable_values:
+                name: Alex
+                balance: "$50"
+                company: Acme Corp
       responses:
         "200":
           description: >

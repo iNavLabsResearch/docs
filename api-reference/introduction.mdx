@@ -52,7 +52,7 @@ When you open **Try it** and click **Send**, the playground shows the **real HTT
 
 ### Outbound calls
 
-- **POST** `/api/call/create_call` — Outbound PSTN (query params, not JSON). **Auth:** `x-api-key` (recommended) or `Authorization: Bearer` — that user is billed and their phone/agent mappings apply (**no** `user_id` query). Response includes **`request_id`**, **`call_session_id`**, optional **`telephony_leg_id`**; `telephony_provider` is always `pstn` in JSON.
+- **POST** `/api/call/create_call` — Outbound PSTN (query params + optional JSON `variable_values` for `{{prompt}}` substitution). **Auth:** `x-api-key` (recommended) or `Authorization: Bearer` — that user is billed and their phone/agent mappings apply (**no** `user_id` query). Response includes **`request_id`**, **`call_session_id`**, optional **`telephony_leg_id`**; `telephony_provider` is always `pstn` in JSON.
 
 ### Knowledge base
 
@@ -179,7 +179,7 @@ Your key is bound to a **user** in Kupe. For **`POST /api/call/create_call`**, *
 | **inbound noise reduction** | `agent.apply_noise_reduction` + `noise_cancellation_strength` in `agent_specific_config`. |
 | **outbound background noise** | **`GET /api/v1/noise-assets`** → `background_noise_id` (+ optional `background_noise_volume`). |
 | **extracted_variables** | Post-analysis structured output / HTTP tool (see **Webhooks**). |
-| **context_params** | Not a single global JSON body on `create_call` yet; pass via telephony or extend backend if needed. |
+| **context_params** | Optional JSON on `POST /api/call/create_call`: `{ "variable_values": { … } }` — replaces `{{key}}` in system prompt and first response at dial time. |
 
 ---
 

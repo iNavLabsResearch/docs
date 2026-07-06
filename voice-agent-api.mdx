@@ -58,7 +58,7 @@ Your integration checklist maps to Kupe as follows.
 | **inbound noise reduction** | `agent.apply_noise_reduction` plus `agent_specific_config.noise_cancellation_strength` (0–100) |
 | **outbound background noise** | `GET /api/v1/noise-assets` → `agent_specific_config.background_noise_id` (+ optional `background_noise_volume`) |
 | **extracted_variables** | Configure **Post analysis** (structured output / HTTP tool) on the agent in the dashboard; see [Webhooks](#5-webhooks-post-call) |
-| **context_params** | Passed at call time via your own telephony URL parameters or automation; the stock `create_call` query API does not accept a JSON body—extend or wrap if you need a single JSON contract |
+| **context_params** | Optional JSON body on `POST /api/call/create_call`: `{ "variable_values": { "name": "Alex", "balance": "$50" } }` replaces `{{name}}`, `{{balance}}` in the agent prompt and first response at dial time. |
 
 ---
 
@@ -263,12 +263,32 @@ Use these lists to populate UI or to resolve **codes** vs **UUIDs** for agent cr
 
 This route is **not** under `/api/v1`. **Authenticate every request** with **`x-api-key`** (best for integrations and cron jobs) **or** **`Authorization: Bearer`** plus your Supabase session JWT (same token the Kupe web app uses). The **API key owner** or **Bearer user** is always who is billed and whose `phone_numbers` / mappings are used — there is **no** `user_id` query parameter.
 
+### Query parameters
+
 | Query parameter | Required | Description |
 |-----------------|----------|-------------|
 | `phoneNumber` | Yes | Destination — use **E.164** with country code (e.g. **+91**… India, **+1**… US/Canada); URL-encode `+` as `%2B` in curl |
 | `agent_id` | No* | Agent to run (*recommended for voice agents) |
 | `workflow_id` | No | Alternative to `agent_id` |
 | `phone_number_id` | No | Specific outbound line from `phone_numbers` (must belong to the authenticated user) |
+
+### Optional JSON body — prompt variables
+
+Send `Content-Type: application/json` with a **`variable_values`** object to personalize the call at dial time. Each key replaces a matching `{{key}}` placeholder in the agent **system prompt** and **first-response message** (same behavior as campaign/batch calls, without creating a campaign).
+
+Example agent prompt: `Hello {{name}}, I'm calling about your {{balance}} balance at {{company}}.`
+
+```json
+{
+  "variable_values": {
+    "name": "Alex",
+    "balance": "$50",
+    "company": "Acme Corp"
+  }
+}
+```
+
+Variables are stored on the call session and applied when the telephony webhook connects the media stream.
 
 When a **`phone_numbers`** row is resolved (explicit id or via mapping), Kupe uses that row’s **configured telephony backend** (Twilio, Elison, or Exotel). If no row is found, a **fallback** may use the first available active line for that user.
 
@@ -284,11 +304,13 @@ curl -sS -X POST \
   'https://api.kupe.in/api/call/create_call?phoneNumber=%2B15551234567&agent_id=<AGENT_UUID>'
 ```
 
-India — **Bearer** session:
+India — **Bearer** session (with prompt variables):
 
 ```bash
 curl -sS -X POST \
   -H "Authorization: Bearer <SUPABASE_JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"variable_values":{"name":"Alex","balance":"$50"}}' \
   'https://api.kupe.in/api/call/create_call?phoneNumber=%2B919876543210&agent_id=<AGENT_UUID>'
 ```
 
