@@ -377,22 +377,28 @@ There is **no** single public “scrape this URL into the vector DB” REST rout
 
 ---
 
-## 5. Webhooks (post-call)
+## 5. Webhooks (outbound integration + post-call)
 
-Kupe does **not** emit a single fixed “call completed” JSON to your URL unless you configure it:
+### Outbound call loop
 
-1. In the dashboard, open the agent → **Post analysis**.
-2. Add **structured output** and/or an **HTTP integration** (tool) that runs after the call.
+1. **Start call (your CRM → Kupe)** — `POST /api/call/create_call` with `x-api-key`, **or** signed `POST /api/v1/webhooks/agents/{agent_id}/incoming`.
+2. **Call ends (Kupe → your CRM)** — if the agent has **outgoing webhook** enabled and the web/phone toggles match, Kupe POSTs the lead payload to your URL.
 
-The HTTP tool executor sends a **POST** (by default) to your endpoint with a body derived from the tool schema and the analysis pipeline—shape is **per tool definition**, not one global envelope.
+See [Agent webhooks](/api-reference/endpoint/webhook) for curl examples, HMAC signing, and config API (`GET`/`PUT /api/v1/webhooks/agents/{agent_id}`, `GET /api/v1/webhooks/me`).
 
-Document for your clients:
+Agent toggles live under **Advance → Webhooks** (`agent_specific_config.webhooks`):
 
-- **Completion-style fields** (`call_duration`, `extracted_variables`, `summary`, `full_conversation`, `recording_url`, `from_number`, `to_number`, `cost`, `sentiment_analysis`) should be modeled as **outputs in the structured prompt / JSON schema** or as **arguments** in the HTTP tool schema so your webhook receives exactly those keys.
+- `trigger_on_web_call` / `trigger_on_phone_call`
+- `incoming.enabled` + server-managed HMAC `secret`
+- `outgoing.url` / `method` / `headers` / `auth` / `retry_count`
 
-- **Error events** — map failed HTTP tool executions or `5xx` from your endpoint to your “error webhook”; Kupe surfaces tool errors in post-analysis logs.
+### System default lead schema
 
-For product overview, see [Post analysis](/assistants/post-analysis).
+Every ended call also runs the **system** post-call analysis (no rule attachment required). Fields include lead info (`customer_name`, `mobile_number`, …), call details, and AI qualification (`lead_status`, `lead_temperature`, `lead_score`, `ai_summary`, next actions). Legacy keys (`call_summary`, `user_name`, …) remain as compat aliases.
+
+### Custom post-analysis rules (optional)
+
+You can still attach dashboard **Post analysis** rules / HTTP tools. Those run **in addition** to the system default and outgoing webhook dispatch.
 
 ---
 

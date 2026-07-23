@@ -1,4 +1,145 @@
 ---
-title: 'New Plant'
-openapi: 'WEBHOOK /plant/webhook'
+title: 'Agent webhooks'
+description: 'Start outbound calls from your CRM and receive lead payload when calls end.'
 ---
+
+# Agent webhooks
+
+Each agent has **two** webhooks:
+
+| Name | Direction | When |
+|------|-----------|------|
+| **Start call** | Your CRM → Kupe | You want to **initiate an outbound call** |
+| **Call ended** | Kupe → your CRM | A call **ends** (after lead post-call analysis) |
+
+Configure both on the agent **Advance** tab. The **API Keys** page lists each agent's start-call URL for quick copy.
+
+**Queuing**
+
+| Path | Queued? |
+|------|---------|
+| **Start call** (`create_call` / incoming webhook) | Yes — Redis queue + worker; paced by global CPS and provider concurrency. Returns `202` with `status: "queued"` and `queue_job_id`. If Redis is down, dials inline (`200`). |
+| **Call ended** (outgoing webhook) | Yes — Redis queue + worker with a `kupe_outgoing_webhook:channel` permit (default max **10**, override with `server.max_concurrent_outgoing_webhooks`). If Redis is down, sends inline. |
+
+API outbound dials also respect `server.max_concurrent_api_outbound_dials` (default **20**) for in-flight worker tasks.
+
+---
+
+## 1. Start call webhook
+
+### Option A — REST + API key
+
+```bash
+curl -X POST "https://<kupe-host>/api/call/create_call?phoneNumber=%2B15551234567&agent_id=<AGENT_ID>" \
+  -H "x-api-key: <KUPE_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"variable_values":{"name":"Alex"}}'
+```
+
+Successful enqueue returns **202**:
+
+```json
+{
+  "status": "queued",
+  "queue_job_id": "…",
+  "user_id": "…",
+  "target_number": "+15551234567",
+  "agent_id": "…",
+  "source": "create_call"
+}
+```
+
+A background worker dials when global CPS and provider concurrency allow. When the call ends, the **call-ended** webhook fires as usual.
+### Option B — Start-call webhook (HMAC)
+
+`POST /api/v1/webhooks/agents/{agent_id}/incoming`
+
+Sign the **raw body** with your agent secret:
+
+```bash
+BODY='{"phoneNumber":"+15551234567","variable_values":{"name":"Alex"}}'
+SECRET='<webhook_secret>'
+SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')
+
+curl -X POST "https://<kupe-host>/api/v1/webhooks/agents/<AGENT_ID>/incoming" \
+  -H "Content-Type: application/json" \
+  -H "X-Webhook-Signature: sha256=$SIG" \
+  -d "$BODY"
+```
+
+Enable the start-call webhook and rotate the secret from the dashboard (or `POST /api/v1/webhooks/agents/{agent_id}/rotate-secret`).
+
+**Body fields:** `phoneNumber` (or `to_number` / `phone_number`), optional `phone_number_id`, optional template variables.
+
+### Template variables (`{{placeholders}}`)
+
+Configure **attached variables** on the agent (defaults always applied to the dial). On each request you can override them:
+
+| Source | Priority |
+|--------|----------|
+| `incoming.attached_variables` defaults (dashboard / `PUT` config) | lowest |
+| Top-level body keys other than phone / reserved fields | medium |
+| `variable_values`, `variables`, or `context_params` object | highest |
+
+```json
+{
+  "phoneNumber": "+15551234567",
+  "variable_values": { "name": "Alex", "balance": "$50" }
+}
+```
+
+---
+
+## 2. Call ended webhook
+
+When a call finishes, Kupe runs the system lead post-call analysis, then — if call-ended is enabled and the **web call** / **phone call** toggles match — POSTs JSON to your CRM URL.
+
+Manage config:
+
+| Method | Path |
+|--------|------|
+| `GET` | `/api/v1/webhooks/agents/{agent_id}` |
+| `PUT` | `/api/v1/webhooks/agents/{agent_id}` |
+| `POST` | `/api/v1/webhooks/agents/{agent_id}/test-outgoing` |
+| `GET` | `/api/v1/webhooks/me` (API Keys listing) |
+
+`PUT` body example:
+
+```json
+{
+  "trigger_on_web_call": true,
+  "trigger_on_phone_call": true,
+  "incoming": {
+    "enabled": true,
+    "attached_variables": [
+      { "name": "name", "default_value": "Guest" }
+    ]
+  },
+  "outgoing": {
+    "enabled": true,
+    "url": "https://crm.example.com/webhooks/kupe",
+    "method": "POST",
+    "headers": { "Content-Type": "application/json" },
+    "auth": { "type": "bearer", "token": "…" },
+    "retry_count": 1
+  }
+}
+```
+
+### Payload (lead schema)
+
+Top-level fields are the **system default** lead analysis (plus session metadata). The webhook also includes **every** post-call analysis for the session:
+
+- `post_call_analyses` — array of all PCA rows (system default + attached Call Analysis rules + legacy), each with `rule_name`, `source`, `structured_json` / `body_text` / `tool_invocation`
+- `post_call_analysis_count` — length of that array
+
+Lead fields at the top level:
+
+- `customer_name`, `mobile_number`, `email`, `company_name`, `lead_source`
+- `call_datetime`, `call_duration`, `call_direction` (`inbound` \| `outbound`), `call_status`, `recording_url`
+- `lead_status`, `lead_temperature`, `ai_summary`, `lead_score`
+- `next_action`, `next_follow_up_date`, `crm_stage`
+- `send_whatsapp`, `send_email`, `reminder_to_sales_team`
+- plus `call_session_id` / `agent_id` and legacy aliases (`call_summary`, `user_name`, …)
+
+Your endpoint should respond quickly with any `2xx`.

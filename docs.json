@@ -53,6 +53,7 @@
               "api-reference/introduction",
               "api-reference/platform-rest-apis",
               "voice-agent-api",
+              "api-reference/endpoint/webhook",
               "supported-models"
             ]
           },

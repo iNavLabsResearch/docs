@@ -25,6 +25,8 @@ info:
     | `GET /api/v1/noise-assets` | `https://api.kupe.in/api/v1/noise-assets` (background noise catalog) |
     | `GET/POST /api/call/incoming_call` | `https://api.kupe.in/api/call/incoming_call` (TwiML webhook) |
     | `POST /api/call/create_call` | `https://api.kupe.in/api/call/create_call` |
+    | `GET/PUT /api/v1/webhooks/agents/{agent_id}` | Agent incoming/outgoing webhook config |
+    | `POST /api/v1/webhooks/agents/{agent_id}/incoming` | Signed CRM → Kupe start outbound |
     | `GET /api/call/auth/token` | `https://api.kupe.in/api/call/auth/token` (WebSocket authentication) |
     | `GET /api/call/*media-stream` | WebSockets: `/api/call/media-stream`, `/api/call/web-media-stream`, etc. |
     | `POST /api/v1/batch-call/create` | Create outbound batch campaign |
@@ -827,40 +829,68 @@ components:
     CallCompletedPayload:
       type: object
       description: >
-        Example payload Kupe can POST to your URL when you model it in post-analysis
-        / HTTP tool schema.
-        Shape is **defined by your tool**; this object lists common fields clients
-        ask for.
+        Default JSON Kupe POSTs to your **outgoing webhook** URL when a call ends
+        (system lead post-call analysis + session metadata). Custom body_template
+        may remap keys.
       properties:
-        call_id:
+        call_id: { type: string }
+        call_session_id: { type: string }
+        agent_id: { type: string, format: uuid }
+        customer_name: { type: string }
+        mobile_number: { type: string }
+        email: { type: string }
+        company_name: { type: string }
+        lead_source: { type: string }
+        call_datetime: { type: string }
+        call_duration: { type: number, description: Seconds }
+        call_direction:
           type: string
-          description: Often the carrier call id or an internal session id.
-        call_duration:
-          type: number
-          description: Seconds.
-        extracted_variables:
-          type: object
-          additionalProperties: true
-        call_status:
+          enum: [inbound, outbound]
+        call_status: { type: string, example: completed }
+        recording_url: { type: string, format: uri }
+        lead_status:
           type: string
-          example: "completed"
-        summary:
+          enum: [Interested, Follow-up Required, Not Interested, Disqualified]
+        lead_temperature:
           type: string
-        full_conversation:
-          type: string
-          description: Full transcript text.
-        recording_url:
-          type: string
-          format: uri
-        from_number:
-          type: string
-        to_number:
-          type: string
-        cost:
-          type: number
-        sentiment_analysis:
-          type: object
-          additionalProperties: true
+          enum: [Hot, Warm, Cold]
+        ai_summary: { type: string }
+        lead_score: { type: number }
+        next_action: { type: string }
+        next_follow_up_date: { type: string }
+        crm_stage: { type: string }
+        send_whatsapp: { type: boolean }
+        send_email: { type: boolean }
+        reminder_to_sales_team: { type: boolean }
+        call_summary: { type: string, description: Legacy alias of ai_summary }
+        user_name: { type: string, description: Legacy alias of customer_name }
+        from_number: { type: string }
+        to_number: { type: string }
+        post_call_analysis_count:
+          type: integer
+          description: Number of PCA rows included for this session.
+        post_call_analyses:
+          type: array
+          description: >
+            Every post-call analysis for the session — system_default lead schema
+            plus attached Call Analysis rules (structured_json / body_text / tool_invocation).
+          items:
+            type: object
+            properties:
+              rule_id: { type: string, nullable: true }
+              rule_name: { type: string, nullable: true }
+              source: { type: string, description: "system_default | rule | legacy" }
+              sort_order: { type: integer }
+              body_text: { type: string, nullable: true }
+              structured_json:
+                type: object
+                nullable: true
+                additionalProperties: true
+              tool_invocation:
+                type: object
+                nullable: true
+                additionalProperties: true
+              raw_response: { type: string, nullable: true }
 
     CallErrorPayload:
       type: object
@@ -3778,6 +3808,149 @@ paths:
               schema:
                 $ref: "#/components/schemas/ArbitraryJson"
 
+  /api/v1/webhooks/me:
+    get:
+      tags: ["Webhooks"]
+      summary: List agent webhook URLs for current user
+      operationId: listMyAgentWebhooks
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agents:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+
+  /api/v1/webhooks/agents/{agent_id}:
+    get:
+      tags: ["Webhooks"]
+      summary: Get agent webhook config
+      operationId: getAgentWebhooks
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: reveal_secret
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    put:
+      tags: ["Webhooks"]
+      summary: Upsert agent webhook config
+      operationId: putAgentWebhooks
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/v1/webhooks/agents/{agent_id}/rotate-secret:
+    post:
+      tags: ["Webhooks"]
+      summary: Rotate incoming webhook HMAC secret
+      operationId: rotateAgentWebhookSecret
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK (returns revealed secret)
+
+  /api/v1/webhooks/agents/{agent_id}/test-outgoing:
+    post:
+      tags: ["Webhooks"]
+      summary: Send test payload to call-ended webhook URL
+      operationId: testAgentOutgoingWebhook
+      description: >
+        Sends a sample lead payload to the configured call-ended (outgoing) CRM URL.
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Delivered
+        "502":
+          description: Downstream failed
+
+  /api/v1/webhooks/agents/{agent_id}/incoming:
+    post:
+      tags: ["Webhooks"]
+      summary: Incoming webhook — start outbound call (HMAC)
+      security: []
+      description: >
+        Client CRM → Kupe. Authenticate with `X-Webhook-Signature: sha256=<hmac>`.
+        Body: `{ "phoneNumber": "+1…", "variable_values": {} }`.
+        Merges agent `incoming.attached_variables` defaults with request
+        `variable_values` / `variables` / `context_params` / top-level keys
+        (request overrides defaults). Returns resolved `variable_values` in the response.
+      operationId: incomingWebhookStartOutbound
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              properties:
+                phoneNumber: { type: string }
+                to_number: { type: string }
+                phone_number: { type: string }
+                phone_number_id: { type: string, format: uuid }
+                variable_values:
+                  type: object
+                  additionalProperties: true
+                  description: Per-call overrides for {{placeholders}} (wins over attached defaults)
+                variables:
+                  type: object
+                  additionalProperties: true
+                context_params:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "200":
+          description: Call initiated (includes resolved variable_values)
+        "401":
+          description: Invalid signature
+
   /api/v1/api-keys:
     post:
       tags: ["API keys"]
@@ -3904,9 +4077,9 @@ webhooks:
       tags: [Webhooks]
       summary: Call completed (your HTTPS endpoint)
       description: >
-        **Inbound to your server.** Configure via agent **Post analysis** → HTTP integration
-        / structured output.
-        Map fields in your tool schema so Kupe’s POST matches this example.
+        **Inbound to your server.** Configure via agent **Advance → Outgoing webhook**.
+        Kupe POSTs the system lead schema (`CallCompletedPayload`) when the call ends
+        and channel toggles match.
       operationId: webhookCallCompleted
       requestBody:
         required: true
@@ -3915,26 +4088,28 @@ webhooks:
             schema:
               $ref: "#/components/schemas/CallCompletedPayload"
             example:
-              call_id: "CAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              call_id: "session-uuid"
+              agent_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+              customer_name: "Jane Doe"
+              mobile_number: "+15551234567"
+              email: "jane@example.com"
+              company_name: "Acme"
+              lead_source: "Website"
+              call_datetime: "2026-07-15T10:00:00Z"
               call_duration: 132.4
-              extracted_variables:
-                intent: "billing"
-                account_last4: "4242"
-              call_status: "completed"
-              summary: "User asked about invoice; agent explained charges."
-              full_conversation: "Agent: Hi…\nUser: …"
+              call_direction: outbound
+              call_status: completed
               recording_url: "https://example.com/recording.mp3"
-              from_number: "+15550001111"
-              to_number: "+15550002222"
-              cost: 0.12
-              sentiment_analysis:
-                label: "positive"
-                score: 0.81
+              lead_status: Interested
+              lead_temperature: Warm
+              ai_summary: "Prospect asked about pricing and wants a demo next week."
+              lead_score: 82
+              next_action: Send Email
+              send_email: true
+              reminder_to_sales_team: true
       responses:
         "200":
-          description: Acknowledge receipt (your server should return quickly). 
-            Your endpoint may return any 2xx; non-2xx may be retried or logged 
-            depending on Kupe integration settings.
+          description: Acknowledge receipt (your server should return quickly).
           content:
             application/json:
               schema:
